@@ -1,237 +1,66 @@
-# Fedora and EL spec for slideshow-lock 1.0.10.
-#
-# Legend for the comments in this file:
-#   [K]  known: read from this repository (the file is named) or from a source named in the comment
-#   [M]  measured: a tool was run (in a scratch root or in COPR), the tool and its version, or the
-#        COPR build, are named in the comment
-#   [H]  background knowledge about RPM, systemd and the Fedora packaging guidelines, NOT verified
-#
-# STATUS (2026-10-09; the history of the earlier builds is in the git log of this file):
-# [M] COPR build 11102911 of 1.0.9-1 (project trensoft/slideshow-lock), chroot fedora-rawhide-x86_64:
-# fedora-review 0.12.0 lists 73 items, 38 "[x]", 1 "[!]", 34 "[ ]" (manual review), and 1 entry under
-# "Issues:" (the user unit scriptlets, see the comment above %%post); rpmlint 2.8.0 on the RPM and the
-# SRPM: 0 errors, 0 warnings. There is no rpmlint or fedora-review output for epel-10. NOT run: mock by
-# hand, an install of the RPM on a Fedora or EL machine, a real GNOME session.
-#
-# Prerequisites that are not in this file:
-#   - Source0 (the GitHub archive of the tag v%%{version}) can be downloaded only once that tag
-#     exists. A tag is made at a release, when the review of the final commit is green and the
-#     version is bumped (docs/RELEASING.md). A protected or signed tag and a SHA-512 of the tarball
-#     are to be fixed at release time. A release has to be cut after po/*.po (the catalogs are in
-#     the repository) and after the files listed next.
-#   - The files this spec installs are in the repository and must stay there:
-#     data/io.github.trensoft.slideshowlock.desktop.in,
-#     data/io.github.trensoft.slideshowlock.metainfo.xml.in (the only copies in git: the installed
-#     files are generated from them in %%install) and the two icons under
-#     data/icons/hicolor/. packaging/slideshow-lock and data/slideshow-lock.service are the launcher
-#     and the user unit.
-# Decisions of the maintainer, taken outside this repository (not read from it):
-#   - The name and e-mail address in %%changelog are the maintainer's choice (2026-10-05). The
-#     repository is public, so they stay in the history of main.
-#   - License GPL-3.0-or-later is the maintainer's decision (2026-10-05). Since 1.0.8 the 22 modules of
-#     slideshow_lock/ and the two launchers carry it as an SPDX header (SPDX-FileCopyrightText: 2026
-#     TrenSoft, SPDX-License-Identifier: GPL-3.0-or-later); README.md and the metainfo say "or later"
-#     as well, and LICENSE is the plain GPLv3 text.
-# Open items, not code (they need a later step):
-#   - A second spec (an EL one) would be ignored again by the "*.spec" line of .gitignore; the file
-#     here is tracked, so it is not affected.
-#   - The unit is not enabled by the package by itself. %%systemd_user_post runs "systemctl --no-reload
-#     preset --global" on the first install [M: systemd-update-helper.in of systemd v256, read], so
-#     the unit is enabled for everybody only if a preset of the distribution says so; no preset is
-#     shipped here; the on/off toggle that the settings window is meant to get (docs/service.md,
-#     section 7) would enable it. The service is started at login by the XDG autostart entry below
-#     ("slideshowlock autostart" starts the unit through the user's systemd), not by an enable.
-#   - %%check runs the whole test suite only with "--with tests" (off by default): it needs a private
-#     dbus-daemon and the GTK 4 typelibs, and no build root has been tried with it.
-# Open questions, NOT measured (background knowledge only, do not read them as verified):
-#   - [H] PyGObject>=3.42 in the dependencies makes the generated Requires ask for
-#     python3dist(pygobject); [M] a Fedora 43 rpmlint run of the earlier spec says the requirement is
-#     generated (python-leftover-require), not measured again here; whether python3-gobject provides it on
-#     EL10 is not known.
-#   - [H] %%{_metainfodir} is not defined by rpm itself [M: not in macros.in of rpm 4.18.2, 4.19.1
-#     and 4.20.0, read]; the line below defines it when nothing else does.
-#   - [H] the package names of the build requirements and of the typelibs on RHEL 10, AlmaLinux 10,
-#     Rocky 10 (run.sh says itself that its names are "likely, not verified on RHEL 10.2").
-#   - setuptools in the four COPR chroots: [M] python3-setuptools 69.0.3-12.el10 (epel-10),
-#     78.1.1-15.fc43, 80.10.2-3.fc44, 84.0.0-1.fc46 (rawhide): the same versions are in the builder
-#     logs of the build 11084605 (2026-10-06) and in the repository metadata read on 2026-10-09 (CentOS
-#     Stream 10 BaseOS, Fedora 43 and 44 release, rawhide); the EPEL 10 repository has no
-#     python3-setuptools of its own (primary.xml read 2026-10-09). [M] setuptools 84.0.0 builds the
-#     wheel of this repository with one deprecation warning for license = { file = "LICENSE" } (a
-#     deadline of 2027-Feb-18 in the message), no failure. [M] The SPDX string license = "GPL-3.0-or-later" (PEP 639) was tried on 2026-10-09 in a
-#     rootless root of each: setuptools 78.1.1 builds the wheel, setuptools 69.0.3 stops with
-#     "`project.license` must be valid exactly by one definition" (it only knows the table with
-#     "file" or "text"). So pyproject.toml keeps the table form until EL10 has setuptools 77 or newer.
+# Fedora and EL spec for slideshow-lock.
 
 %global app_id io.github.trensoft.slideshowlock
-# [K] app_id is APP_ID of slideshow_lock/__init__.py: the GSettings schema id and the gettext domain,
-# and the name of the .desktop file, the metainfo file and the icons (the app id of the program)
+# app_id is APP_ID of slideshow_lock/__init__.py: the GSettings schema id, the gettext domain and the
+# name of the .desktop, metainfo and icon files
 
 %{!?_metainfodir:%global _metainfodir %{_datadir}/metainfo}
-# [H] the usual place of AppStream metainfo files is /usr/share/metainfo
 
 %bcond tests 0
-# [H] "%%bcond tests 0" defines the switch off by default; "rpmbuild --with tests" turns it on
-# Deviation from the Python guidelines (the upstream test suite should run in %%check), documented as they
-# ask: the suite (tests/, run in the upstream CI on Ubuntu) needs a private dbus-daemon and the GTK 4
-# typelibs, i.e. a GNOME/D-Bus session, and no Fedora or EL build root has run it, so it is NOT proven in
-# mock. The import check and the file validators in %%check run in every build.
+# The test suite needs a private dbus-daemon and the GTK 4 typelibs, so it is off by default
+# (rpmbuild --with tests turns it on). %%check still imports every module and validates the installed files.
 
 Name:           slideshow-lock
-# [K] "slideshow-lock" is the name in pyproject.toml; the package name is not derived from APP_ID
 Version:        1.0.10
-# [K] pyproject.toml says version = "1.0.10"
-Release:        1%{?dist}
-# [H] a plain Release: with an explicit %%changelog below. %%autorelease/%%autochangelog are not
-# used on purpose: the changelog would be built from the git log of this repository
+Release:        2%{?dist}
 Summary:        Idle slideshow screensaver for GNOME on Wayland that locks on input
 License:        GPL-3.0-or-later AND CC-BY-SA-4.0
-# GPL-3.0-or-later is the maintainer's decision (2026-10-05): LICENSE is the plain GPLv3 text,
-# pyproject.toml says license = { file = "LICENSE" } and, since 1.0.8, the modules and the two
-# launchers carry an SPDX header (tests/test_packaging.py keeps it). CC-BY-SA-4.0 is the license of the
-# seven sample pictures (data/pictures, [K] the credit is data/pictures/CREDITS.txt, the text is
-# packaging/licenses/CC-BY-SA-4.0.txt); the binary
-# package holds both, hence AND. [H] an SPDX expression in License: is what the guidelines ask for;
-# [K] CC-BY-SA-4.0 is on the "Allowed Content Licenses" list of the Fedora legal documentation (it is
-# allowed for content such as pictures, not for code); [M] rpmlint of the COPR build 11102911 is clean.
+# CC-BY-SA-4.0 is the license of the seven sample pictures (data/pictures/CREDITS.txt)
 URL:            https://github.com/trensoft/slideshow-lock
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
-# [H] the usual form of a GitHub tag tarball; it unpacks into slideshow-lock-%%{version}/
-# The tags up to v1.0.9 exist; the tag v1.0.10 does not exist yet, it is made at the release (see the prerequisites at the top).
 
 BuildArch:      noarch
-# [K] pure Python: slideshow_lock/*.py only, no extension module
 
 BuildRequires:  python3-devel
-# [H] python3-devel brings in the %%pyproject_* macros; setuptools comes from
-# %%pyproject_buildrequires, which reads [build-system] of pyproject.toml ([K]: setuptools>=68)
 BuildRequires:  gettext
-# [K] tools/i18n.sh build and data need msgfmt (package: gettext, as the tool itself says)
-# [H] msgfmt --xml finds the ITS rules of the metainfo in the data directory of the gettext
-# installation (tools/i18n.sh says so). [M] in the COPR build 11084605 "bash tools/i18n.sh data
-# generated-data" (it runs msgfmt --desktop and msgfmt --xml, [K] tools/i18n.sh) ended without error
-# in %%install in all four chroots, and appstreamcli validate accepted the metainfo it wrote, so the
-# gettext of those four build roots has what it needs.
 BuildRequires:  glib2-devel
-# [K] run.sh names glib2-devel for glib-compile-schemas; used in %%check only
 BuildRequires:  systemd-rpm-macros
-# [H] the package of %%{_userunitdir} and %%systemd_user_*; its macros were read in the source of
-# systemd v256 (src/rpm/macros.systemd.in), which is where the package takes them from
 BuildRequires:  desktop-file-utils
-# [H] desktop-file-validate is in desktop-file-utils; used in %%check only
 BuildRequires:  appstream
-# [H] appstreamcli is in the package appstream; used in %%check only
 BuildRequires:  libappstream-glib
-# [M] appstream-util is a file of the package libappstream-glib (the file list of the RPMs of Fedora 43
-# and CentOS Stream 10, read); used in %%check only. The AppData guideline of Fedora asks for
-# "appstream-util validate-relax" next to the BuildRequires ([K] audit of 2026-10-09, item 6; the
-# guideline text itself is [H]). [M] the package is in every repository of the four chroots of the COPR
-# project (primary.xml read on 2026-10-09): CentOS Stream 10 AppStream 0.8.3-2.el10 and 0.8.3-3.el10
-# (the epel-10 chroot has that repository; EPEL 10 itself has none), Fedora 43 0.8.3-4.fc43 and
-# 0.8.4-1.fc43, Fedora 44 0.8.3-5.fc44 and 0.8.4-1.fc44, rawhide 0.8.4-1.fc45, so the line is not
-# conditional
-
-# Needed by %%check (the import test) and by the program at run time.
-# [K] the package names are the ones run.sh prints for each missing typelib:
-#     gi -> python3-gobject, Gtk/Gdk 4.0 -> gtk4, Graphene 1.0 -> graphene,
-#     GdkPixbuf 2.0 -> gdk-pixbuf2, Gio/GLib 2.0 -> glib2
-# [K] run.sh itself says these names are "likely", not verified on RHEL 10.2
+# The next lines are needed by the import test in %%check
 BuildRequires:  python3-gobject
 BuildRequires:  gtk4
 BuildRequires:  graphene
 BuildRequires:  gdk-pixbuf2
 BuildRequires:  glib2
 BuildRequires:  libadwaita
-# [M] the settings window is built on libadwaita, which Python loads as gi.require_version("Adw", "1")
-# (the typelib Adw-1.typelib, a file of the package libadwaita itself, not of libadwaita-devel). The line
-# is here for the %%check below: %%pyproject_check_import imports every module, so the build root needs
-# the typelib as soon as one of them does (slideshow_lock/preferences.py does). [M] read in the
-# live repodata (primary.xml and filelists.xml) on 2026-10-07: CentOS Stream 10 AppStream has libadwaita
-# 1.6.10-1.el10 (and 1.6.0, 1.6.1, 1.6.6), Fedora 43 has 1.8.1-1.fc43 (release) and 1.8.8-1.fc43
-# (updates), EPEL 10 has none (it is not needed). [M] in a rootless CentOS Stream 10 root with the
-# libadwaita-1.6.10-1.el10 and appstream-1.0.2-5.el10 files unpacked (no scriptlets, no dnf),
-# gi.require_version("Adw", "1") loads Adw 1.6.10. NOT measured: the same on Fedora 43.
 BuildRequires:  gobject-introspection
-# [M] cairo-1.0.typelib is a file of the package gobject-introspection (the rpm of Fedora 43, 44 and
-# rawhide and the filelists of the Fedora 43 and CentOS Stream 10 repositories, read). No module of
-# this package imports cairo: the typelibs of Gtk 4.0 and Gdk 4.0 depend on cairo 1.0, and loading
-# them loads it. [M] In the Fedora 43 updates repository (primary metadata read) gtk4 4.20.4-1.fc43 and
-# python3-gobject-base 3.54.5-4.fc43 do not require gobject-introspection, so the minimal Fedora build
-# root of COPR (build 11084376) had no cairo typelib and the import check of %%check failed there. In
-# the Fedora 43 release repository the python3-gobject-base 3.54.3-1.fc43 still requires it
-# (gobject-introspection(x86-64)); its gtk4 4.20.2-1.fc43 does not. python3-gobject-base 3.46.0-7.el10
-# requires it as well (read in the primary metadata of the CentOS Stream 10 BaseOS repository), which is
-# why the epel-10 chroot passed.
+# gobject-introspection has the cairo typelib, which the Gtk and Gdk typelibs load; on Fedora
+# neither gtk4 nor python3-gobject-base pulls it in
 %if %{with tests}
-# [K] the test run (.github/workflows/ci.yml) needs pytest, the GStreamer typelib and dbus-daemon
-# next to the above; [H] the package names
 BuildRequires:  python3-pytest
 BuildRequires:  gstreamer1-plugins-base
 BuildRequires:  dbus-daemon
 %endif
 
-# [K] the program loads these typelibs through gi.require_version (slideshow_lock/*.py);
-# [H] a typelib dependency may also be written as typelib(Gtk) = 4.0, package names are used here
-# Not listed on purpose: python3-gobject and glib2 (no "Requires: python3-gobject", no "Requires:
-# glib2"). [M: in a Fedora 43 container, with the earlier spec, which had both lines; not measured
-# again here] rpmlint printed python-leftover-require for python3-gobject (the generated
-# python3dist(pygobject) requirement covers it, see the open question above) and
-# explicit-lib-dependency for glib2. [H] glib2 arrives through gtk4 and gdk-pixbuf2, which link its
-# shared libraries, and it is what python3-gobject needs as well. [M] the COPR build 11084605 passed
-# on all four chroots, but its build roots have python3-gobject and glib2 installed (BuildRequires), so
-# it does not show that nothing is missing at run time; only an install of the RPM on a minimal Fedora
-# or EL machine can (NOT run, see STATUS). The one typelib package that is listed by name,
-# gobject-introspection, is explained at its own line.
-# [K] slideshow_lock/dbus_adapters.py calls org.gnome.Mutter.IdleMonitor, org.gnome.SessionManager,
-# org.gnome.ScreenSaver and org.gnome.Shell on the session bus; [H] GNOME Shell (with mutter) serves them,
-# and the package is for GNOME only (OnlyShowIn=GNOME in the autostart entry).
+# The program calls GNOME Shell and mutter over D-Bus (IdleMonitor, SessionManager, ScreenSaver)
 Requires:       gnome-shell
 Requires:       gtk4
 Requires:       libadwaita >= 1.2
-# [M] the same package as the BuildRequires above, for the run time: the typelib Adw-1 is in it. A
-# dependency on the typelib itself cannot be written: no primary.xml of CentOS Stream 10 (BaseOS,
-# AppStream, CRB), EPEL 10 or Fedora 43 (release, updates) has a typelib(...) provide, so the package
-# name is the dependency. [M] libadwaita 1.6.10-1.el10 requires gtk4 >= 4.15.2 (EL10 has 4.16.7-6.el10),
-# libadwaita 1.8.8-1.fc43 requires gtk4 >= 4.17.5 (Fedora 43 has 4.20.4-1.fc43); appstream, fribidi,
-# graphene and pango are in the same repositories.
-# The version: the window code uses only what libadwaita 1.2 has, and Adw.EntryRow (the folder row,
-# slideshow_lock/preferences.py) is the newest of it: it came with 1.2. [M] read in the sources of
-# libadwaita 1.2.0, 1.6.10 (EL10) and 1.8.8 (Fedora 43) from download.gnome.org: the classes used are
-# ApplicationWindow, Application, HeaderBar, Clamp, PreferencesGroup, PreferencesRow, ActionRow, ComboRow
-# and EntryRow; every function and property of them that the module calls or sets (set_content, add,
-# add_suffix, set_activatable_widget, subtitle, title, model, selected, set_description, set_child,
-# maximum-size, tightening-threshold, the entry-activated signal and the GtkEditable text of the
-# EntryRow) is in the headers and the sources of 1.2.0; what the later releases added to these classes
-# (ADW_AVAILABLE_IN_1_3 and newer: for example Clamp unit, HeaderBar show-title, ComboRow enable-search)
-# is not used. The number is also what removes the rpmlint error explicit-lib-dependency, which fires
-# only for an unversioned Requires on a library-like name ([M] rpmlint 2.8.0, TagsCheck.py). [M] On the
-# noarch RPMs built from this spec in rootless roots of CentOS Stream 10 and of Fedora 43 (2026-10-09):
-# the 1.0.7 spec with a bare "Requires: libadwaita" gives "E: explicit-lib-dependency libadwaita", this
-# one gives no error. Revisit the number when the window code uses something newer
-# (tests/test_packaging.py fails when it uses a class that is newer than 1.2).
+# 1.2 is the oldest libadwaita with every class the settings window uses (Adw.EntryRow); a bare
+# Requires on a library name would make rpmlint print explicit-lib-dependency
 Requires:       graphene
 Requires:       gdk-pixbuf2
-# [M] the cairo typelib is needed at run time as well: in a Fedora 43 root made of the requirements of
-# this package, with the dependencies resolved by hand inside the package set of the COPR build,
-# gtk4 and python3-gobject-base do not bring gobject-introspection, and "from gi.repository import
-# Gtk" fails with the missing cairo typelib; with the line below the import of Gtk and of
-# slideshow_lock.preferences, .service, .preview_app and .preview_window works. EL10 gets the package
-# through python3-gobject-base already; the line is for Fedora.
 Requires:       gobject-introspection
+# the cairo typelib, see the BuildRequires above
 Requires:       hicolor-icon-theme
-# [H] the package that owns the hicolor directories the icons go into
 Recommends:     gstreamer1-plugins-base
-# [K] optional: scaling.py falls back to GdkPixbuf bilinear without the GStreamer videoscale element
-# (run.sh: "optional"). [H] gstreamer1-plugins-base is the package run.sh names for it.
+# optional: scaling falls back to GdkPixbuf bilinear without the GStreamer videoscale element
 
-# Picture formats (docs/image-source.md, "Picture formats"): on EL10 the loaders for TIFF and GIF are in
-# gdk-pixbuf2-modules (AppStream, base repositories), and those for BMP and WebP are in packages that
-# only EPEL 10 has: gdk-pixbuf2-modules-extra and webp-pixbuf-loader. [M: by the solution architect, from
-# the RPM file lists and primary.xml of Rocky 10.2 and EPEL 10; not measured again here] The EPEL ones
-# are weak dependencies on purpose: the package must not need EPEL. [H] dnf installs a weak dependency
-# that no enabled repository has without a message and without failing; not measured. Fedora needs none
-# of these (gdk-pixbuf2 pulls in glycin, which loads the formats); NOT measured on Fedora 43 or later.
 %if 0%{?rhel}
+# On EL10 the TIFF and GIF loaders are in gdk-pixbuf2-modules; the BMP and WebP ones are only in
+# EPEL 10, so they are weak dependencies and the package does not need EPEL
 Requires:       gdk-pixbuf2-modules
 Recommends:     webp-pixbuf-loader
 Recommends:     gdk-pixbuf2-modules-extra
@@ -249,7 +78,6 @@ interface follows the language of the session.
 
 %generate_buildrequires
 %pyproject_buildrequires
-# [H] writes the build dependencies of pyproject.toml into the build root instead of a hand-kept list
 
 %build
 %pyproject_wheel
@@ -257,62 +85,28 @@ interface follows the language of the session.
 %install
 %pyproject_install
 %pyproject_save_files -l slideshow_lock
-# [K] [tool.setuptools.packages.find] include = ["slideshow_lock*"]: 16 .py files, no subpackage,
-# no data files; data/, packaging/ and po/ are not part of the wheel, so they are installed below
-# [M] the wheel built by setuptools 84.0.0 has METADATA with "License-File: LICENSE" and the file
-# in slideshow_lock-1.0.0.dist-info/licenses/LICENSE. [K] %%pyproject_save_files marks the files
-# named in License-File as %%license (pyproject_save_files.py of pyproject-rpm-macros, read), so
-# there is no %%license line in %%files; -l asks the macro to fail the build if it finds none.
+# -l fails the build when the wheel carries no license file
 
-# The command. [K] pyproject.toml has no [project.scripts]; packaging/slideshow-lock is the one
-# launcher: "slideshow-lock service|settings|preview" starts slideshow_lock.service, .settings_app
-# or .preview_app (the sub-commands of run.sh). The unit and the .desktop file call it.
 install -Dpm 0755 packaging/%{name} %{buildroot}%{_bindir}/%{name}
-# The short command. [K] packaging/slideshowlock is a small sh launcher: "slideshowlock" is
-# "slideshow-lock control" (start the service, open the settings window); a separate file, no
-# symlink, no argv0 test.
 install -Dpm 0755 packaging/slideshowlock %{buildroot}%{_bindir}/slideshowlock
 
-# The sample pictures. [K] data/pictures/ holds the seven JPEG files (the metadata taken out but the
-# author and the license in Exif and XMP, see tools/strip_jpeg_metadata.py) and CREDITS.txt; slideshow_lock/sample_pictures.py copies them into
-# the user's pictures folder at the first login, from <datadir>/slideshow-lock/pictures (its
-# APP_DIR and DATA_SUBDIR; tests/test_packaging.py compares this line with the two constants).
-# [K] the folder is made here and not left to the file list, so that it is root:root 0755 whatever
-# the umask of the build is. -p keeps the time of the files, 0644 is the mode (no execute bit).
+# The folder is made here so that it is root:root 0755 whatever the umask of the build is
 install -d -m 0755 %{buildroot}%{_datadir}/%{name}/pictures
 install -pm 0644 data/pictures/* %{buildroot}%{_datadir}/%{name}/pictures/
-# [H] "install" fails without a file for the glob: a package without its pictures is not built
 
-# The settings schema. [K] data/%%{app_id}.gschema.xml, run.sh compiles the same file into a cache
 install -Dpm 0644 data/%{app_id}.gschema.xml \
     %{buildroot}%{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml
-# [H] glib2 compiles installed schemas by itself (file trigger), so there is no scriptlet here
 
-# The user unit. [K] data/slideshow-lock.service runs "/usr/bin/slideshow-lock service"
 install -Dpm 0644 data/%{name}.service %{buildroot}%{_userunitdir}/%{name}.service
-# [M] %%{_userunitdir} is set from USER_DATA_UNIT_DIR, which is prefixdir / 'lib/systemd/user' in
-# meson.build of systemd v256 (read): /usr/lib/systemd/user; [H] the same value on the target distributions
 
-# The autostart entry. [K] data/%%{app_id}.autostart.desktop runs "/usr/bin/slideshowlock autostart"
-# at login (GNOME only, NoDisplay): the service is started, and the settings window opens the first
-# time, while no picture folder is chosen. It goes to /etc/xdg/autostart under the name of the
-# app id. [H] %%config(noreplace) so that an edit of the administrator stays; a user turns it off
-# with an entry of the same name in ~/.config/autostart that says Hidden=true or
-# X-GNOME-Autostart-enabled=false (not measured here).
+# The XDG autostart entry starts the user unit at login (GNOME only); the package does not enable the unit
 install -Dpm 0644 data/%{app_id}.autostart.desktop \
     %{buildroot}%{_sysconfdir}/xdg/autostart/%{app_id}.desktop
 
-# The manual pages. [K] packaging/man/ holds slideshow-lock.1 (the four commands) and slideshowlock.1
-# (the short command); they describe the command lines of the modules, and tests/test_man_pages.py
-# compares every option with the --help of the program. [H] rpm compresses them after %%install.
 install -Dpm 0644 packaging/man/slideshow-lock.1 %{buildroot}%{_mandir}/man1/slideshow-lock.1
 install -Dpm 0644 packaging/man/slideshowlock.1 %{buildroot}%{_mandir}/man1/slideshowlock.1
 
-# The desktop entry, the AppStream metainfo and the icons. [K] the app id names all four files.
-# [K] the .desktop file and the metainfo are generated from data/<app id>.desktop.in and
-# data/<app id>.metainfo.xml.in with the translations of the catalogs: "tools/i18n.sh data DIR" writes
-# DIR/<app id>.desktop and DIR/<app id>.metainfo.xml (msgfmt --desktop and msgfmt --xml). The directory is
-# relative to the source tree, which is the current directory in %%install.
+# The .desktop file and the metainfo are generated from the .in files with the translations
 bash tools/i18n.sh data generated-data
 install -Dpm 0644 generated-data/%{app_id}.desktop \
     %{buildroot}%{_datadir}/applications/%{app_id}.desktop
@@ -322,74 +116,31 @@ install -Dpm 0644 data/icons/hicolor/scalable/apps/%{app_id}.svg \
     %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 install -Dpm 0644 data/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg \
     %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
-# [H] the icon cache is refreshed by a file trigger of the icon theme packages: no scriptlet here
 
-# The translations. [K] tools/i18n.sh build DIR writes DIR/<lang>/LC_MESSAGES/<APP_ID>.mo for the
-# languages of po/LINGUAS (40 in 1.0.5); slideshow_lock/i18n.py reads <prefix>/share/locale
 bash tools/i18n.sh build %{buildroot}%{_datadir}/locale
 %find_lang %{app_id}
-# [M] find-lang.sh of rpm 4.18.0 (the same option parsing as in rpm 4.19.1, read): with the five
-# catalogs of 1.0.0 (the package has 40 since 1.0.1) in a scratch build root it writes
-# %%{app_id}.lang with five %%lang(..) lines, exit 0.
-# Without a catalog it prints "No translations found" and exits 1, so a build that lost its
-# catalogs fails instead of shipping an English-only package. The option --allow-no-translations of
-# the earlier version of this spec is NOT in find-lang.sh of rpm 4.18.0 or 4.19.1: it is taken as the
-# name of the output file, and the build stops with "No translations found" even when the catalogs
-# are there [M: run with the option, exit 1]. It is gone. [H] a Fedora rpm may carry a patch for it.
+# find_lang fails without a catalog, so a build that lost its translations does not ship English only
 
 %check
-# [H] imports every module of the package: the typelibs must load, no display is needed to import
 %pyproject_check_import
-# [H] a dry run (nothing is written): the schema must compile; run.sh runs glib-compile-schemas on it too
 glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
-# [H] the validators of the files that were installed (the installed paths, not the source tree)
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/%{app_id}.desktop
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/%{app_id}.metainfo.xml
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.metainfo.xml
 %if %{with tests}
 %pytest
-# [K] pyproject.toml: testpaths = ["tests"]; [H] the suite needs no display (CI runs it headless)
 %endif
 
-# [M] from the macros.systemd of systemd-rpm-macros (the same file, byte for byte, in EL10 257-34,
-# Fedora 43 258-1 and 258.11, Fedora 44 259.5 and 259.9 and rawhide 262-3) and the
-# systemd-update-helper of the systemd package of those releases (read): %%systemd_user_post runs
-# "systemctl --no-reload preset --global <unit>" on the first install only; %%systemd_user_preun, on
-# removal (not on upgrade), runs "systemctl --global disable --no-warn <unit>" and, only when
-# /run/systemd/system exists (systemd is the running init), also "systemctl --user -M <uid>@ disable
-# --now --no-warn <unit>" for every logged-in user.
-#
-# The running service is restarted after an upgrade by %%systemd_user_posttrans_with_restart: when
-# /run/systemd/system exists and the package is upgraded (not installed or removed), it marks the
-# unit "needs-restart" in the user manager of every logged-in user ("systemctl --user -M <uid>@
-# set-property <unit> Markers=+needs-restart"); it restarts nothing itself. The restart follows at the
-# end of the transaction from a file trigger of the systemd package for /usr/lib/systemd/user
-# ("systemd-update-helper user-restart": "reload-or-restart --marked" in each user manager; the
-# helper of rawhide 262-3 says "enqueue-marked"), so nobody has to run "systemctl --user restart"
-# after "dnf upgrade". Every failure in these scriptlets is ignored ("|| :"): none stops the upgrade.
-# It is %%posttrans and not %%postun on purpose: on an upgrade the %%postun that runs is the one of
-# the OLD package, so a %%postun_with_restart in this spec would act only from the second upgrade on
-# and not on the first one from a version that has none (1.0.1 and before had an empty
-# %%systemd_user_postun). The %%posttrans of the NEW package runs on every upgrade.
-# [M] on the EL10 build root (rpm 4.19.1.1) with the real systemd 257-34 file triggers and a logging
-# "systemctl": an upgrade from a build with the empty %%postun to one with %%postun_with_restart
-# marked nothing; to one with this %%posttrans it marked the unit and then ran "reload-or-restart
-# --marked" for the logged-in user. NOT measured: a real "dnf upgrade" with a logged-in GNOME session (a stub
-# "systemctl" stood in for systemd), and Fedora 43/44/rawhide transactions (only the packages were read).
-
-# fedora-review 0.12.0 reports a false Issue for the two user unit scriptlets below: [K] its check
-# (plugins/generic.py, CheckSystemdUserunitdirScriplets) matches the whole macro expansion, with the
-# trailing space and newline that rpmbuild does not store. [H] a model of it says FAIL as it is and PASS
-# with a line after the macro; NOT measured with the real rpm. The comment line after each macro is the
-# whole workaround and nothing runs differently; the comment must not contain a percent sign.
+# The running service is restarted after an upgrade in %%posttrans and not in %%postun: on an upgrade
+# the %%postun that runs is the one of the OLD package, so it would act only from the second upgrade on
 %post
 %systemd_user_post %{name}.service
-# fedora-review 0.12.0 wants a line after the macro (see the comment above this section)
+# fedora-review wants a line after the macro
 
 %preun
 %systemd_user_preun %{name}.service
-# fedora-review 0.12.0 wants a line after the macro (see the comment above this section)
+# fedora-review wants a line after the macro
 
 %posttrans
 %systemd_user_posttrans_with_restart %{name}.service
@@ -397,14 +148,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %files -f %{pyproject_files} -f %{app_id}.lang
 %doc README.md
 %license packaging/licenses/CC-BY-SA-4.0.txt
-# [M] the wheel of setuptools 84.0.0 has License-File: LICENSE only (see %%install), so the license of
-# the pictures is not claimed twice by %%pyproject_save_files; the name and the folder
-# packaging/licenses/ match no default license-file pattern of setuptools (LICEN[CS]E*, COPYING*,
-# NOTICE*, AUTHORS*) [H: from memory, not measured for setuptools newer than 84.0.0]. [M] rpm -qpL and
-# rpm -qp --licensefiles on the noarch RPM of 1.0.5-1 built from this spec in rootless build roots with
-# the COPR package sets (rpm 4.19.1.1 on EL10, rpm 6.0.2 on Fedora 43): two %%license files, LICENSE (in
-# the dist-info directory of the wheel) and CC-BY-SA-4.0.txt, each once; no file of the RPM is listed
-# twice, and rpmbuild printed no "listed twice" message.
+# the license of the pictures; the wheel carries LICENSE only, so nothing is listed twice
 %{_bindir}/%{name}
 %{_bindir}/slideshowlock
 %{_mandir}/man1/slideshow-lock.1*
@@ -416,13 +160,12 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %{_metainfodir}/%{app_id}.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 %{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
-%dir %{_datadir}/%{name}
-%dir %{_datadir}/%{name}/pictures
-%{_datadir}/%{name}/pictures/*
-# [H] nothing else owned /usr/share/slideshow-lock/ before the pictures; %%dir makes the package the
-# owner of both folders and removes them with the files
+%{_datadir}/%{name}
 
 %changelog
+* Mon Oct 19 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-2
+- Simplify %%files for /usr/share/slideshow-lock; trim spec comments (review feedback)
+
 * Fri Oct 09 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-1
 - Add a Donate button next to Preview in the settings window; it opens the donation page in the browser
 - Remove the main menu with the About entry from the header bar of the settings window
