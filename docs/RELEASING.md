@@ -57,7 +57,9 @@ tagged and pushed at once when both of these hold:
 2. The version bump is in the commit: the version in `pyproject.toml`, in
    `packaging/fedora/slideshow-lock.spec` (`Version:` and the `%changelog` entry) and in the
    `<release>` element of the metainfo is the tag without the `v`, and the date in the `%changelog`
-   entry and in the metainfo is the day of the tag.
+   entry and in the metainfo is the day of the tag. A later `-2` entry of the same version (a new
+   spec release with no change upstream) is dated on its own day; the metainfo keeps the day of the
+   `-1` entry, and `tests/test_version.py` compares the two.
 
 When both hold, the releaser pushes the tag, waits for the COPR build and checks every chroot (see
 below), and then sends a done-message to the team lead. No build is made in the COPR project before
