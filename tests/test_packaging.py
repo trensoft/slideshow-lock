@@ -397,6 +397,18 @@ def test_the_scriptlet_check_sees_a_home_directory_in_every_scriptlet(section, l
     assert scriptlet_problems(text), (section, line)
 
 
+def owns_the_data_directory(files: list, folder: str) -> bool:
+    """The package owns ``<datadir>/slideshow-lock`` and the pictures below it (nothing else does).
+
+    Either one ``%{_datadir}/%{name}`` line, which takes the whole tree (Fedora review, the spec
+    since 1.0.10-2), or the older three lines: the directory, the pictures directory and its files.
+    The lines are compared whole: ``%dir`` on the top directory alone owns no picture."""
+    top = "%{_datadir}/%{name}"
+    return top in files or all(
+        line in files for line in (f"%dir {top}", f"%dir {folder}", f"{folder}/*")
+    )
+
+
 def test_the_pictures_are_installed_and_listed_where_the_program_looks_for_them():
     """The spec and ``sample_pictures`` name one folder: ``<datadir>/slideshow-lock/pictures``."""
     text = SPEC.read_text()
@@ -406,11 +418,40 @@ def test_the_pictures_are_installed_and_listed_where_the_program_looks_for_them(
     assert re.search(
         rf"^install -pm 0644 data/pictures/\* %\{{buildroot\}}{re.escape(folder)}/$", text, re.M
     )
-    files = _section(text, "files")
-    assert "%dir %{_datadir}/%{name}" in files  # nothing else owns /usr/share/slideshow-lock
-    assert f"%dir {folder}" in files
-    assert f"{folder}/*" in files
+    assert owns_the_data_directory(_section(text, "files"), folder)
     assert sample_pictures.DATA_DIRS == ("/usr/local/share", "/usr/share")
+
+
+FOLDER = "%{_datadir}/%{name}/pictures"
+
+
+@pytest.mark.parametrize(
+    "files, owned",
+    [
+        (["%{_datadir}/%{name}"], True),
+        (["%{_bindir}/%{name}", "%{_datadir}/%{name}", "%{_metainfodir}/x"], True),
+        (["%dir %{_datadir}/%{name}", f"%dir {FOLDER}", f"{FOLDER}/*"], True),
+        (["%{_bindir}/%{name}", "%{_metainfodir}/x"], False),  # no line for the directory
+        (["%dir %{_datadir}/%{name}"], False),  # the directory alone, no picture
+        (["%dir %{_datadir}/%{name}", f"{FOLDER}/*"], False),  # the pictures directory is missing
+        ([f"%dir {FOLDER}", f"{FOLDER}/*"], False),  # the top directory is missing
+        (["%dir %{_datadir}/%{name}", f"%dir {FOLDER}"], False),  # the picture files are missing
+        ([f"{FOLDER}/*"], False),  # a longer path is not the top directory
+    ],
+)
+def test_the_ownership_check_accepts_the_whole_tree_line_or_the_three_lines_and_nothing_less(
+    files, owned
+):
+    assert owns_the_data_directory(files, FOLDER) is owned
+
+
+def test_the_spec_without_the_lines_of_its_data_directory_fails_the_ownership_check():
+    """The control on the real spec: take out the line that owns the tree (and the three older
+    lines, in case the spec goes back to them), and the check must see it."""
+    own = {"%{_datadir}/%{name}", "%dir %{_datadir}/%{name}", f"%dir {FOLDER}", f"{FOLDER}/*"}
+    files = _section(SPEC.read_text(), "files")
+    assert owns_the_data_directory(files, FOLDER)
+    assert not owns_the_data_directory([line for line in files if line not in own], FOLDER)
 
 
 def test_the_licence_of_the_package_is_the_code_and_the_pictures_in_the_spec_and_the_metainfo():
