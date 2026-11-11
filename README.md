@@ -24,6 +24,10 @@ X-GNOME-Autostart-enabled=false
 
 `systemctl --user disable --now slideshow-lock` alone does not do this: the autostart entry starts the service again at the next login (and every time `slideshowlock` is run). `systemctl --user enable slideshow-lock` is not needed.
 
+## Binaural sound
+
+The slideshow can play a binaural sound, which is off by default: two quiet sine tones, the carrier (200 Hz) in the left ear and the carrier plus a beat (the alpha preset, 10 Hz) in the right one, so that the two ears hear slightly different tones. Use headphones. Turn it on in the settings window (the Binaural sound row in the Start the slideshow group); the Adjust button opens the volume (30 % by default), the beat (delta 4, theta 6, alpha 10 or beta 14 Hz) and the carrier tone (100 to 500 Hz). The sound plays while the slideshow shows and in the preview, and fades in and out over 1.5 seconds. It never delays the lock: the session is locked first, and a sound that cannot play (no sound device, a GStreamer element missing) is one `[sound]` line in the log, and the slideshow goes on without it. It needs the GStreamer packages `gstreamer1-plugins-base` and `gstreamer1-plugins-good`, which the package recommends. It was tested with measured samples and with a fake sink, not on a speaker: see `docs/binaural.md`.
+
 ## Updating
 
 The packages come from the COPR project `trensoft/slideshow-lock`. To update, run `sudo dnf upgrade --refresh`. A plain `dnf upgrade` can miss a new version for up to 48 hours, because dnf keeps the repository metadata in a cache; this was seen when updating 1.0.0 to 1.0.1.
