@@ -40,6 +40,11 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 from slideshow_lock import APP_ID  # noqa: E402
+from slideshow_lock.binaural import (  # noqa: E402
+    DEFAULT_BEAT,
+    DEFAULT_CARRIER_HZ,
+    DEFAULT_VOLUME_PERCENT,
+)
 from slideshow_lock.transitions import clamp_duration, clean, is_valid  # noqa: E402
 
 _LOG = logging.getLogger(__name__)
@@ -56,6 +61,10 @@ KEY_FIRST_RUN_DONE = "first-run-done"
 KEY_TRANSITIONS = "transitions"
 KEY_TRANSITION_ORDER = "transition-order"
 KEY_TRANSITION_DURATION = "transition-duration"
+KEY_BINAURAL_ENABLED = "binaural-enabled"
+KEY_BINAURAL_VOLUME = "binaural-volume"
+KEY_BINAURAL_BEAT = "binaural-beat"
+KEY_BINAURAL_CARRIER_HZ = "binaural-carrier-hz"
 
 #: The boolean keys, with the default each has in the schema. A program newer than the schema
 #: installed beside it (an upgrade whose schema has not been compiled yet) finds a key missing, and
@@ -65,6 +74,16 @@ BOOLEAN_DEFAULTS = {
     KEY_PAN_PORTRAIT_IMAGES: False,
     KEY_SHOW_SCREENSHOTS: False,
     KEY_FIRST_RUN_DONE: False,
+    KEY_BINAURAL_ENABLED: False,
+}
+
+#: The defaults of the other keys of the binaural sound, for the same reason: it is read when the
+#: slideshow starts, and a key the installed schema lacks must not abort the service (which locks
+#: the session), so it gives the default and the sound is off or plays the default tone.
+BINAURAL_DEFAULTS = {
+    KEY_BINAURAL_VOLUME: DEFAULT_VOLUME_PERCENT,
+    KEY_BINAURAL_BEAT: DEFAULT_BEAT,
+    KEY_BINAURAL_CARRIER_HZ: DEFAULT_CARRIER_HZ,
 }
 
 
@@ -235,6 +254,36 @@ class Settings:
             )
         return ok
 
+    # -- the binaural sound (1.0.11) -----------------------------------------------------
+
+    def get_binaural_enabled(self) -> bool:
+        return self._get_boolean(KEY_BINAURAL_ENABLED)
+
+    def set_binaural_enabled(self, value: bool) -> bool:
+        return self._set_boolean(KEY_BINAURAL_ENABLED, value)
+
+    def get_binaural_volume(self) -> int:
+        """The volume in percent (0 to 100); the default if the installed schema is older."""
+        return self._get_with_default(KEY_BINAURAL_VOLUME, self._settings.get_uint)
+
+    def set_binaural_volume(self, value: int) -> bool:
+        return self._set_if_known(KEY_BINAURAL_VOLUME, value, self._set_uint)
+
+    def get_binaural_beat(self) -> str:
+        """The beat preset ("delta", "theta", "alpha" or "beta"); the default if the installed
+        schema is older."""
+        return self._get_with_default(KEY_BINAURAL_BEAT, self._settings.get_string)
+
+    def set_binaural_beat(self, value: str) -> bool:
+        return self._set_if_known(KEY_BINAURAL_BEAT, value, self._set_string)
+
+    def get_binaural_carrier_hz(self) -> int:
+        """The carrier tone in Hz (100 to 500); the default if the installed schema is older."""
+        return self._get_with_default(KEY_BINAURAL_CARRIER_HZ, self._settings.get_uint)
+
+    def set_binaural_carrier_hz(self, value: int) -> bool:
+        return self._set_if_known(KEY_BINAURAL_CARRIER_HZ, value, self._set_uint)
+
     # -- picture-folder (acceptance criterion 4 / D25 / brief 3.7) ----------
 
     def get_picture_folder(self) -> str:
@@ -318,14 +367,32 @@ class Settings:
         is older and lacks it (logged once)."""
         if self._has_key(key):
             return self._settings.get_boolean(key)
+        self._log_missing(key, BOOLEAN_DEFAULTS[key])
+        return BOOLEAN_DEFAULTS[key]
+
+    def _get_with_default(self, key: str, read):
+        """The value of *key* by *read*, or its default (``BINAURAL_DEFAULTS``) if the installed
+        schema is older and lacks it (logged once): the same guard as ``_get_boolean``."""
+        if self._has_key(key):
+            return read(key)
+        self._log_missing(key, BINAURAL_DEFAULTS[key])
+        return BINAURAL_DEFAULTS[key]
+
+    def _set_if_known(self, key: str, value, setter) -> bool:
+        """Store with *setter* unless the installed schema lacks *key* (GLib would abort)."""
+        if not self._has_key(key):
+            self._log_missing(key, BINAURAL_DEFAULTS[key])
+            return False
+        return setter(key, value)
+
+    def _log_missing(self, key: str, default) -> None:
         if key not in self._missing_logged:
             self._missing_logged.add(key)
             _LOG.warning(
                 "[config] the installed schema has no key '%s' (an older schema): using '%s'",
                 key,
-                BOOLEAN_DEFAULTS[key],
+                default,
             )
-        return BOOLEAN_DEFAULTS[key]
 
     def _set_boolean(self, key: str, value: bool) -> bool:
         # `Gio.Settings.set_boolean` takes any truthy Python object, so "no", 0 or [] would be

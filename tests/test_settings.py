@@ -140,7 +140,7 @@ data, key = sys.argv[1], sys.argv[2]
 work = tempfile.mkdtemp()
 name = "io.github.trensoft.slideshowlock.gschema.xml"
 xml = open(os.path.join(data, name), encoding="utf-8").read()
-old = re.sub(r'\s*<key name="%s" type="b">.*?</key>' % re.escape(key), "", xml, flags=re.S)
+old = re.sub(r'\s*<key name="%s" type="[a-z]+">.*?</key>' % re.escape(key), "", xml, flags=re.S)
 assert old != xml
 open(os.path.join(work, name), "w", encoding="utf-8").write(old)
 subprocess.run(["glib-compile-schemas", work], check=True)
@@ -157,6 +157,10 @@ getter = {
     "pan-portrait-images": (settings.get_pan_portrait_images, settings.set_pan_portrait_images),
     "show-screenshots": (settings.get_show_screenshots, settings.set_show_screenshots),
     "first-run-done": (settings.get_first_run_done, settings.set_first_run_done),
+    "binaural-enabled": (settings.get_binaural_enabled, settings.set_binaural_enabled),
+    "binaural-volume": (settings.get_binaural_volume, settings.set_binaural_volume),
+    "binaural-beat": (settings.get_binaural_beat, settings.set_binaural_beat),
+    "binaural-carrier-hz": (settings.get_binaural_carrier_hz, settings.set_binaural_carrier_hz),
 }[key]
 print("GET", getter[0]())
 print("GET AGAIN", getter[0]())
@@ -173,9 +177,15 @@ print("DONE")
         ("pan-portrait-images", False),
         ("show-screenshots", False),
         ("first-run-done", False),
+        # the binaural sound is read by the service when a slideshow starts: a schema that does not
+        # have its keys yet (the program is newer than the schema compiled) must not abort it
+        ("binaural-enabled", False),
+        ("binaural-volume", 30),
+        ("binaural-beat", "alpha"),
+        ("binaural-carrier-hz", 200),
     ],
 )
-def test_a_boolean_key_the_schema_lacks_gives_its_default_and_does_not_abort(key, default):
+def test_a_key_the_schema_lacks_gives_its_default_and_does_not_abort(key, default):
     """GLib aborts the whole process at a key the schema does not have, so this runs in a process
     of its own: the schema of an older version, compiled without *key*."""
     data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
@@ -194,6 +204,64 @@ def test_a_boolean_key_the_schema_lacks_gives_its_default_and_does_not_abort(key
     logged = [line for line in lines if line.startswith("LOG ") and key in line]
     assert len(logged) >= 1 and "older schema" in logged[0]
     assert sum("has no key" in line and "using" in line for line in logged) == 1  # once
+
+
+# -- the binaural sound ---------------------------------------------------------------------------
+
+
+def test_the_sound_is_off_and_the_other_sound_values_are_the_defaults_of_the_brief():
+    settings = Settings()
+    assert settings.get_binaural_enabled() is False
+    assert settings.get_binaural_volume() == 30
+    assert settings.get_binaural_beat() == "alpha"
+    assert settings.get_binaural_carrier_hz() == 200
+
+
+def test_the_sound_settings_roundtrip():
+    settings = Settings()
+    assert settings.set_binaural_enabled(True) is True
+    assert settings.set_binaural_volume(75) is True
+    assert settings.set_binaural_beat("theta") is True
+    assert settings.set_binaural_carrier_hz(440) is True
+    other = Settings()
+    assert other.get_binaural_enabled() is True
+    assert other.get_binaural_volume() == 75
+    assert other.get_binaural_beat() == "theta"
+    assert other.get_binaural_carrier_hz() == 440
+
+
+@pytest.mark.parametrize(
+    "setter, good, bad",
+    [
+        ("set_binaural_volume", 40, [101, -1, 1000]),
+        ("set_binaural_carrier_hz", 250, [99, 501, -5]),
+        ("set_binaural_beat", "beta", ["gamma", "", "ALPHA"]),
+    ],
+)
+def test_the_sound_settings_reject_what_is_outside_their_range_or_choices(
+    setter, good, bad, caplog
+):
+    settings = Settings()
+    getter = setter.replace("set_", "get_")
+    assert getattr(settings, setter)(good) is True
+    for value in bad:
+        with caplog.at_level(logging.WARNING, logger="slideshow_lock.settings"):
+            try:
+                accepted = getattr(settings, setter)(value)
+            except (
+                TypeError,
+                OverflowError,
+            ):  # a negative number is not a uint (as for every uint key)
+                accepted = False
+        assert accepted is False, value
+        assert getattr(settings, getter)() == good  # unchanged
+
+
+def test_the_sound_switch_takes_a_real_bool_only():
+    settings = Settings()
+    for value in ("yes", 1, None):
+        assert settings.set_binaural_enabled(value) is False
+    assert settings.get_binaural_enabled() is False
 
 
 def test_show_screenshots_roundtrip():

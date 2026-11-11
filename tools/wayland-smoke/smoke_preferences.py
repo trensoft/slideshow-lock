@@ -49,6 +49,7 @@ from slideshow_lock.preferences_model import (  # noqa: E402
     interval_position_for_seconds,
 )
 from slideshow_lock.settings import (  # noqa: E402
+    KEY_BINAURAL_BEAT,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -643,6 +644,69 @@ def main() -> int:
         window.duration_scale.get_value() == 5.0 and stored.get_transition_duration() == 5.0,
         str(window.duration_scale.get_value()),
     )
+
+    # -- the binaural sound: a row with the switch, the rest in a small window ---------------------
+    check(
+        "the sound starts off, at 30 %, alpha, 200 Hz (the defaults)",
+        not window.sound_switch.get_active()
+        and window.volume_scale.get_value() == 30
+        and window.beat_drop.get_selected() == CHOICES[KEY_BINAURAL_BEAT].index("alpha")
+        and window.carrier_scale.get_value() == 200
+        and not stored.get_binaural_enabled(),
+    )
+    check(
+        "the sound window is not shown before it is asked for", not window.sound_window.is_visible()
+    )
+    window.sound_button.emit("clicked")
+    pump(1.0, until=window.sound_window.get_mapped)
+    check(
+        "Adjust... shows the sound window over the settings window",
+        window.sound_window.is_visible() and window.sound_window.get_transient_for() is window,
+    )
+    window.sound_switch.set_active(True)
+    check("the switch is stored at once", stored.get_binaural_enabled() is True)
+    window.volume_scale.set_value(55)
+    check("the volume slider is stored at once", stored.get_binaural_volume() == 55)
+    window.beat_drop.set_selected(CHOICES[KEY_BINAURAL_BEAT].index("theta"))
+    check("the beat drop-down is stored at once", stored.get_binaural_beat() == "theta")
+    window.carrier_scale.set_value(300)
+    check("the carrier slider is stored at once", stored.get_binaural_carrier_hz() == 300)
+    window.volume_scale.set_value(0)
+    window.volume_scale.set_value(100)
+    check(
+        "the volume slider stops at 0 and 100",
+        window.volume_scale.get_value() == 100 and stored.get_binaural_volume() == 100,
+    )
+    window.carrier_scale.set_value(1)
+    check(
+        "the carrier slider stops at 100 Hz",
+        window.carrier_scale.get_value() == 100 and stored.get_binaural_carrier_hz() == 100,
+    )
+    stored.set_binaural_volume(80)  # another process changes the sound
+    stored.set_binaural_beat("beta")
+    stored.set_binaural_enabled(False)
+    pump(1.0, until=lambda: window.volume_scale.get_value() == 80)
+    check(
+        "a sound set elsewhere shows up in the fields",
+        window.volume_scale.get_value() == 80
+        and window.beat_drop.get_selected() == CHOICES[KEY_BINAURAL_BEAT].index("beta")
+        and not window.sound_switch.get_active(),
+    )
+    window.sound_window.close()
+    pump(0.5)
+    check(
+        "closing the sound window hides it and keeps the values",
+        not window.sound_window.is_visible() and stored.get_binaural_volume() == 80,
+    )
+    window.sound_button.emit("clicked")
+    pump(1.0, until=window.sound_window.get_mapped)
+    check("and it can be shown again", window.sound_window.is_visible())
+    window.sound_window.close()
+    pump(0.3)
+    stored.set_binaural_volume(30)
+    stored.set_binaural_beat("alpha")
+    stored.set_binaural_carrier_hz(200)
+    pump(0.5)
 
     # -- the folder chooser: only the paths a headless run can reach ------------------------
     window.browse_button.emit("clicked")

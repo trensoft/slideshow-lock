@@ -107,6 +107,28 @@ def make_tone(
     return Tone(left, right, percent / 100.0)
 
 
+def tone_from_settings(settings) -> Optional[Tone]:
+    """The tone the settings ask for, or None when the sound is off. The four values are read once.
+
+    *settings* has ``get_binaural_enabled()``, ``get_binaural_volume()``, ``get_binaural_beat()``
+    and ``get_binaural_carrier_hz()``; an object without them (an older one) means no sound. A
+    failure to read them is a log line and no sound, never an exception."""
+    enabled = getattr(settings, "get_binaural_enabled", None)
+    if enabled is None:
+        return None
+    try:
+        if not enabled():
+            return None
+        return make_tone(
+            settings.get_binaural_volume(),
+            settings.get_binaural_beat(),
+            settings.get_binaural_carrier_hz(),
+        )
+    except Exception as exc:
+        _LOG.warning("[sound] the sound settings could not be read (%s): no sound", exc)
+        return None
+
+
 def fade_level(start: float, end: float, elapsed: float, seconds: float = FADE_SECONDS) -> float:
     """The level *elapsed* seconds into a linear ramp from *start* to *end* that takes *seconds*."""
     if seconds <= 0 or elapsed >= seconds:
@@ -357,6 +379,12 @@ class BinauralPlayer:
         self._level = 0.0
         self._goal = None
         self._ramp = None
+        _LOG.info(
+            "[sound] playing (left %.1f Hz, right %.1f Hz, volume %d %%)",
+            tone.left_hz,
+            tone.right_hz,
+            round(tone.volume * 100),
+        )
         return True
 
     def _fail(self, what: str, exc: Exception) -> None:
@@ -381,3 +409,41 @@ class BinauralPlayer:
                 backend.close()
             except Exception as exc:
                 _LOG.debug("[sound] closing the pipeline failed (%s)", exc)
+            else:
+                _LOG.debug("[sound] stopped")
+
+
+class SlideshowSound:
+    """What the slideshow calls: ``start`` when it shows, ``stop`` when it ends.
+
+    The settings are read when the sound starts, so a change is heard at the next slideshow. Nothing
+    here raises and nothing waits for the device (see ``BinauralPlayer``): the slideshow and the
+    lock go on whatever the sound does. *player* is for the tests."""
+
+    def __init__(self, settings, player: Optional[BinauralPlayer] = None) -> None:
+        self._settings = settings
+        self._player = player or BinauralPlayer()
+
+    def start(self) -> None:
+        try:
+            tone = tone_from_settings(self._settings)
+            if tone is not None:
+                self._player.start(tone)
+        except Exception as exc:
+            _LOG.warning("[sound] the sound could not be started (%s): no sound", exc)
+
+    def stop(self) -> float:
+        """Begin the fade-out; the seconds it can take (0.0 when nothing plays)."""
+        try:
+            return self._player.stop()
+        except Exception as exc:
+            _LOG.warning("[sound] the sound could not be stopped (%s)", exc)
+            return 0.0
+
+    def close(self) -> None:
+        """Take the pipeline down at once and end the worker thread (the program is ending, or
+        this sound will not be used again)."""
+        try:
+            self._player.close()
+        except Exception as exc:
+            _LOG.warning("[sound] closing the sound failed (%s)", exc)

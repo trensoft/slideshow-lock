@@ -601,6 +601,7 @@ def test_the_holder_of_the_header_is_the_developer_of_the_metainfo_and_the_packa
 ADW_1_2 = {
     "Application",
     "ApplicationWindow",
+    "Window",  # libadwaita 1.0: the small window of the sound settings
     "HeaderBar",
     "Clamp",
     "PreferencesGroup",

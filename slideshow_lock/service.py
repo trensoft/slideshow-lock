@@ -49,6 +49,7 @@ from slideshow_lock import (  # noqa: E402
     dbus_adapters,  # noqa: E402
     i18n,
 )
+from slideshow_lock.binaural import SlideshowSound  # noqa: E402
 from slideshow_lock.loop import Poster, current_poster, unix_signal_add  # noqa: E402
 from slideshow_lock.preview import GLibClock, PreviewController, ThreadWorker  # noqa: E402
 from slideshow_lock.preview_app import SessionSettings, build_source  # noqa: E402
@@ -96,19 +97,34 @@ class PreviewSlideshow:
 
     With an *overview* (``OverviewControl``) ``start`` closes the shell's overview first, once it
     knows it will open the windows: a slideshow that opens under an open overview is a third
-    window in it, not a full screen one."""
+    window in it, not a full screen one.
+
+    With a *sound* (``binaural.SlideshowSound``) the binaural sound starts once the windows are up
+    and fades out when the slideshow ends, whichever way it ends. The sound never gets in the way:
+    its calls only queue a command (the device is handled on a thread of its own), a failure of
+    either is logged and goes no further, and the fade-out is begun by *defer* (the main loop's
+    poster, by default), after the code that ended the slideshow has gone on to make its lock call:
+    the lock is made first, the sound fades in the background."""
 
     def __init__(
-        self, controller: PreviewController, source, overview: Optional[OverviewControl] = None
+        self,
+        controller: PreviewController,
+        source,
+        overview: Optional[OverviewControl] = None,
+        sound=None,
+        defer: Optional[Poster] = None,
     ) -> None:
         self._controller = controller
         self._source = source
         self._overview = overview
+        self._sound = sound
+        self._defer = defer or current_poster()
         self._listeners: List[Callable[[str], None]] = []
         self._ready_listeners: List[Callable[[], None]] = []
         self._waiting_for_scan = False
         self._asked = False
         controller.connect_stopped(self._on_stopped)
+        controller.connect_stopped(self._on_stopped_sound)  # after the state machine has heard it
         source.connect_current_changed(self._on_current_changed)
 
     def start(self) -> Optional[str]:
@@ -125,6 +141,7 @@ class PreviewSlideshow:
         self._controller.start()
         if not self._controller.running:
             return "no monitor found"
+        self._start_sound()
         return None
 
     def stop(self) -> None:
@@ -152,6 +169,30 @@ class PreviewSlideshow:
             return
         for callback in list(self._listeners):
             callback(reason)
+
+    def _start_sound(self) -> None:
+        if self._sound is None:
+            return
+        try:
+            self._sound.start()
+        except Exception:
+            _LOG.exception("[sound] starting the sound failed: the slideshow goes on without it")
+
+    def _on_stopped_sound(self, _reason: str) -> None:
+        """The slideshow ended (by input, or by the state machine's own stop): begin the fade-out
+        later, on the main loop, when the code that ended it has made its lock call."""
+        if self._sound is None:
+            return
+        try:
+            self._defer(self._stop_sound)
+        except Exception:
+            _LOG.exception("[sound] stopping the sound failed")
+
+    def _stop_sound(self) -> None:
+        try:
+            self._sound.stop()
+        except Exception:
+            _LOG.exception("[sound] stopping the sound failed")
 
 
 class _NoIdle:
@@ -375,7 +416,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     settings = ServiceSettings(Settings(), overrides)
 
     app = Gtk.Application(application_id=APP_ID + ".Service")
-    state = {"service": None, "source": None, "worker": None, "status": 0}
+    state = {"service": None, "source": None, "worker": None, "sound": None, "status": 0}
 
     def fail(message: str, *args) -> None:
         _LOG.error(message, *args)
@@ -403,13 +444,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             worker=worker,
             animations=animations_enabled,
         )
-        state["source"], state["worker"] = source, worker
+        sound = SlideshowSound(settings)
+        state["source"], state["worker"], state["sound"] = source, worker, sound
         try:
             state["service"] = build_service(
                 session,
                 system,
                 settings,
-                PreviewSlideshow(controller, source, dbus_adapters.GnomeShellOverview(session)),
+                PreviewSlideshow(
+                    controller, source, dbus_adapters.GnomeShellOverview(session), sound
+                ),
             )
         except Exception as exc:
             # Any failure, not a list of known ones: a GLib.Error from a bus call that is not an
@@ -425,6 +469,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     status = app.run([sys.argv[0]])
     if state["service"] is not None:
         state["service"].close()
+    if state["sound"] is not None:
+        state["sound"].close()
     if state["source"] is not None:
         state["source"].stop()
     if state["worker"] is not None:

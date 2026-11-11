@@ -12,8 +12,9 @@ import os
 import pytest
 from gi.repository import Gio
 
-from slideshow_lock import APP_ID
+from slideshow_lock import APP_ID, binaural
 from slideshow_lock.preferences_model import (
+    BINAURAL_RANGES,
     CHOICES,
     DURATION_MAX_SECONDS,
     DURATION_MIN_SECONDS,
@@ -38,6 +39,10 @@ from slideshow_lock.preferences_model import (
     step_interval_position,
 )
 from slideshow_lock.settings import (
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -77,6 +82,21 @@ def test_the_ranges_and_choices_are_the_ones_of_the_schema():
         assert (kind, sorted(value)) == ("enum", sorted(values)), key
 
 
+def test_the_sound_ranges_and_defaults_are_the_ones_of_the_schema():
+    for key, (low, high) in BINAURAL_RANGES.items():
+        kind, value = _schema_key(key).get_range().unpack()
+        assert (kind, tuple(value)) == ("range", (low, high)), key
+    defaults = {
+        KEY_BINAURAL_ENABLED: False,
+        KEY_BINAURAL_VOLUME: binaural.DEFAULT_VOLUME_PERCENT,
+        KEY_BINAURAL_BEAT: binaural.DEFAULT_BEAT,
+        KEY_BINAURAL_CARRIER_HZ: binaural.DEFAULT_CARRIER_HZ,
+    }
+    for key, default in defaults.items():
+        assert _schema_key(key).get_default_value().unpack() == default, key
+    assert sorted(CHOICES[KEY_BINAURAL_BEAT]) == sorted(binaural.BEAT_PRESETS)
+
+
 def test_the_transition_order_choices_are_the_ones_of_the_schema():
     kind, value = _schema_key(KEY_TRANSITION_ORDER).get_range().unpack()
     assert (kind, sorted(value)) == ("enum", sorted(TRANSITION_ORDER_CHOICES))
@@ -85,8 +105,10 @@ def test_the_transition_order_choices_are_the_ones_of_the_schema():
 def test_every_key_of_the_schema_has_a_field(model):
     bound = (
         set(INT_RANGES)
+        | set(BINAURAL_RANGES)
         | set(CHOICES)
         | {
+            KEY_BINAURAL_ENABLED,
             KEY_PAN_PORTRAIT_IMAGES,
             KEY_PICTURE_FOLDER,
             KEY_SHOW_SCREENSHOTS,

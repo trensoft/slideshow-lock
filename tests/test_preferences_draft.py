@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from slideshow_lock.preferences_model import (
+    BINAURAL_RANGES,
     CHOICES,
     INT_RANGES,
     INTERVAL_POSITIONS,
@@ -22,6 +23,10 @@ from slideshow_lock.preferences_model import (
     PreferencesModel,
 )
 from slideshow_lock.settings import (
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -58,6 +63,10 @@ def stored():
         "transition_order": other.get_transition_order(),
         "duration": other.get_transition_duration(),
         "folder": other.get_picture_folder(),
+        "sound": other.get_binaural_enabled(),
+        "volume": other.get_binaural_volume(),
+        "beat": other.get_binaural_beat(),
+        "carrier": other.get_binaural_carrier_hz(),
     }
 
 
@@ -73,6 +82,10 @@ def edit_everything(draft, folder):
         draft.edit_transition("zoom"),
         draft.edit_duration(2.5),
         draft.edit_folder(str(folder)),
+        draft.edit_binaural_enabled(True),
+        draft.edit_binaural_level(KEY_BINAURAL_VOLUME, 55),
+        draft.edit_choice(KEY_BINAURAL_BEAT, "theta"),
+        draft.edit_binaural_level(KEY_BINAURAL_CARRIER_HZ, 300),
     ]
     assert all(r.ok for r in results), results
 
@@ -127,6 +140,10 @@ def test_save_writes_every_edit(draft, tmp_path):
         "transition_order": "random",
         "duration": 2.5,
         "folder": str(tmp_path),
+        "sound": True,
+        "volume": 55,
+        "beat": "theta",
+        "carrier": 300,
     }
     assert not draft.dirty
 
@@ -144,6 +161,10 @@ def test_save_writes_every_edit(draft, tmp_path):
         (lambda d: d.edit_transition("wipe"), KEY_TRANSITIONS),
         (lambda d: d.edit_duration(3.3), KEY_TRANSITION_DURATION),
         (lambda d: d.edit_folder("/nonexistent/pictures"), KEY_PICTURE_FOLDER),
+        (lambda d: d.edit_binaural_enabled(True), KEY_BINAURAL_ENABLED),
+        (lambda d: d.edit_binaural_level(KEY_BINAURAL_VOLUME, 55), KEY_BINAURAL_VOLUME),
+        (lambda d: d.edit_choice(KEY_BINAURAL_BEAT, "beta"), KEY_BINAURAL_BEAT),
+        (lambda d: d.edit_binaural_level(KEY_BINAURAL_CARRIER_HZ, 300), KEY_BINAURAL_CARRIER_HZ),
     ],
 )
 def test_save_writes_each_key_on_its_own(draft, edit, key):
@@ -160,8 +181,10 @@ def test_save_writes_each_key_on_its_own(draft, edit, key):
 def test_every_key_a_draft_can_hold_is_in_the_save_order():
     assert set(SAVE_ORDER) == (
         set(INT_RANGES)
+        | set(BINAURAL_RANGES)
         | set(CHOICES)
         | {
+            KEY_BINAURAL_ENABLED,
             KEY_PAN_PORTRAIT_IMAGES,
             KEY_SHOW_SCREENSHOTS,
             KEY_PICTURE_FOLDER,
@@ -297,6 +320,10 @@ def test_the_preview_values_are_the_edits_as_the_settings_getters_return_them(dr
         KEY_TRANSITIONS: ["zoom"],
         KEY_TRANSITION_DURATION: 2.5,
         KEY_PICTURE_FOLDER: str(tmp_path),
+        KEY_BINAURAL_ENABLED: True,
+        KEY_BINAURAL_VOLUME: 55,
+        KEY_BINAURAL_BEAT: "theta",
+        KEY_BINAURAL_CARRIER_HZ: 300,
     }
 
 
@@ -385,6 +412,22 @@ SAVE_STATE_CASES = {
         lambda d, tmp: d.edit_folder(str(tmp)),
         lambda d, tmp: d.edit_folder(""),
     ),
+    KEY_BINAURAL_ENABLED: (
+        lambda d, tmp: d.edit_binaural_enabled(True),
+        lambda d, tmp: d.edit_binaural_enabled(False),
+    ),
+    KEY_BINAURAL_VOLUME: (
+        lambda d, tmp: d.edit_binaural_level(KEY_BINAURAL_VOLUME, 55),
+        lambda d, tmp: d.edit_binaural_level(KEY_BINAURAL_VOLUME, 30),
+    ),
+    KEY_BINAURAL_BEAT: (
+        lambda d, tmp: d.edit_choice(KEY_BINAURAL_BEAT, "beta"),
+        lambda d, tmp: d.edit_choice(KEY_BINAURAL_BEAT, "alpha"),
+    ),
+    KEY_BINAURAL_CARRIER_HZ: (
+        lambda d, tmp: d.edit_binaural_level(KEY_BINAURAL_CARRIER_HZ, 300),
+        lambda d, tmp: d.edit_binaural_level(KEY_BINAURAL_CARRIER_HZ, 200),
+    ),
 }
 
 
@@ -449,4 +492,69 @@ def test_a_field_changed_after_a_save_is_measured_against_the_new_stored_value(d
     assert draft.edit_choice(KEY_ORDER, "random").ok  # no longer the stored value
     assert draft.dirty
     assert draft.edit_choice(KEY_ORDER, "name").ok  # the stored one now
+    assert not draft.dirty
+
+
+# -- the binaural sound ------------------------------------------------------------------------
+
+
+def test_the_sound_edits_are_kept_and_shown_before_they_are_stored(draft):
+    assert draft.edit_binaural_enabled(True).ok
+    assert draft.edit_binaural_level(KEY_BINAURAL_VOLUME, 80).ok
+    assert draft.edit_choice(KEY_BINAURAL_BEAT, "delta").ok
+    assert draft.edit_binaural_level(KEY_BINAURAL_CARRIER_HZ, 440).ok
+    assert draft.value(KEY_BINAURAL_ENABLED) is True
+    assert draft.value(KEY_BINAURAL_VOLUME) == 80
+    assert draft.value(KEY_BINAURAL_BEAT) == "delta"
+    assert draft.value(KEY_BINAURAL_CARRIER_HZ) == 440
+    assert stored()["sound"] is False  # nothing was written
+
+
+def test_what_is_not_edited_shows_the_default_sound_settings(draft):
+    assert draft.value(KEY_BINAURAL_ENABLED) is False
+    assert draft.value(KEY_BINAURAL_VOLUME) == 30
+    assert draft.value(KEY_BINAURAL_BEAT) == "alpha"
+    assert draft.value(KEY_BINAURAL_CARRIER_HZ) == 200
+
+
+@pytest.mark.parametrize(
+    "key, bad",
+    [
+        (KEY_BINAURAL_VOLUME, -1),
+        (KEY_BINAURAL_VOLUME, 101),
+        (KEY_BINAURAL_VOLUME, 30.5),
+        (KEY_BINAURAL_VOLUME, True),
+        (KEY_BINAURAL_VOLUME, "30"),
+        (KEY_BINAURAL_CARRIER_HZ, 99),
+        (KEY_BINAURAL_CARRIER_HZ, 501),
+        (KEY_BINAURAL_CARRIER_HZ, 200.0),
+        (KEY_BINAURAL_CARRIER_HZ, None),
+    ],
+)
+def test_a_sound_level_outside_its_range_or_not_a_whole_number_is_refused_and_keeps_nothing(
+    draft, key, bad
+):
+    result = draft.edit_binaural_level(key, bad)
+    assert not result.ok and result.message == "This position is not on the slider."
+    assert not draft.dirty
+
+
+@pytest.mark.parametrize("key", sorted(BINAURAL_RANGES))
+def test_the_ends_of_a_sound_slider_are_accepted(draft, key):
+    low, high = BINAURAL_RANGES[key]
+    assert draft.edit_binaural_level(key, low).ok
+    assert draft.edit_binaural_level(key, high).ok
+    assert draft.save().ok
+    assert draft.value(key) == high
+
+
+@pytest.mark.parametrize("bad", ["yes", 1, 0, None])
+def test_the_sound_switch_takes_a_real_bool_only(draft, bad):
+    assert not draft.edit_binaural_enabled(bad).ok
+    assert not draft.dirty
+
+
+@pytest.mark.parametrize("bad", ["gamma", "ALPHA", "", None, 10])
+def test_a_beat_that_is_not_a_preset_is_refused(draft, bad):
+    assert not draft.edit_choice(KEY_BINAURAL_BEAT, bad).ok
     assert not draft.dirty

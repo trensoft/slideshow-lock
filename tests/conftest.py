@@ -75,6 +75,10 @@ os.environ["GSETTINGS_BACKEND"] = "memory"
 # constructing a `Settings()` is what triggers GLib's first (and only)
 # resolution of the default schema source / backend.
 from slideshow_lock.settings import (  # noqa: E402
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -101,6 +105,10 @@ _ALL_SETTINGS_KEYS = [
     KEY_TRANSITIONS,
     KEY_TRANSITION_ORDER,
     KEY_TRANSITION_DURATION,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
 ]
 
 

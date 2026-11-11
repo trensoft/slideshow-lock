@@ -47,6 +47,21 @@ WITHOUT_DATA_STRINGS = frozenset(FIRST_FIVE)
 #: gets the string by adding its translation and its name here.
 HELD_BY = {
     "Show screenshots": frozenset({"hu"}),
+    "Delta (4 Hz)": frozenset({"hu"}),
+    "Theta (6 Hz)": frozenset({"hu"}),
+    "Alpha (10 Hz)": frozenset({"hu"}),
+    "Beta (14 Hz)": frozenset({"hu"}),
+    "Binaural sound": frozenset({"hu"}),
+    (
+        "Two quiet tones, one in each ear, while the slideshow shows and in the preview. "
+        "Best with headphones. Off by default."
+    ): frozenset({"hu"}),
+    "Volume": frozenset({"hu"}),
+    "percent": frozenset({"hu"}),
+    "Beat": frozenset({"hu"}),
+    "Carrier tone": frozenset({"hu"}),
+    "Hz": frozenset({"hu"}),
+    "Adjust...": frozenset({"hu"}),
 }
 
 

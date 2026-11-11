@@ -24,7 +24,18 @@ import os
 from typing import Any, Dict, NamedTuple, Optional
 
 from slideshow_lock import _
+from slideshow_lock.binaural import (
+    BEAT_PRESETS,
+    CARRIER_MAX_HZ,
+    CARRIER_MIN_HZ,
+    VOLUME_MAX_PERCENT,
+    VOLUME_MIN_PERCENT,
+)
 from slideshow_lock.settings import (
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -108,10 +119,22 @@ DURATION_MIN_SECONDS = MIN_DURATION
 DURATION_MAX_SECONDS = MAX_DURATION
 DURATION_STEP_SECONDS = 0.1
 
+#: The binaural sound's sliders: the volume in percent and the carrier tone in Hz, whole numbers
+#: inside the schema's ranges (the ranges of ``binaural``, which the schema is compared with). Only
+#: the sliders edit them, so a value outside is "not on the slider".
+BINAURAL_RANGES = {
+    KEY_BINAURAL_VOLUME: (VOLUME_MIN_PERCENT, VOLUME_MAX_PERCENT),
+    KEY_BINAURAL_CARRIER_HZ: (CARRIER_MIN_HZ, CARRIER_MAX_HZ),
+}
+
+#: The step of the carrier slider, in Hz (the volume goes in steps of one percent).
+CARRIER_STEP_HZ = 10
+
 #: The values of the choice keys, in the order the window lists them. The schema's choices.
 CHOICES = {
     KEY_ORDER: ("random", "name"),
     KEY_SCALING: ("fill", "fit"),
+    KEY_BINAURAL_BEAT: tuple(BEAT_PRESETS),  # delta, theta, alpha, beta
 }
 
 #: What "Random mix" stores: the eight transitions without Blur and Ken Burns (the two that do
@@ -142,6 +165,10 @@ _GETTERS = {
     KEY_TRANSITIONS: "get_transitions",
     KEY_TRANSITION_ORDER: "get_transition_order",
     KEY_TRANSITION_DURATION: "get_transition_duration",
+    KEY_BINAURAL_ENABLED: "get_binaural_enabled",
+    KEY_BINAURAL_VOLUME: "get_binaural_volume",
+    KEY_BINAURAL_BEAT: "get_binaural_beat",
+    KEY_BINAURAL_CARRIER_HZ: "get_binaural_carrier_hz",
 }
 
 _SETTERS = {key: name.replace("get_", "set_", 1) for key, name in _GETTERS.items()}
@@ -355,6 +382,22 @@ class PreferencesModel:
         return Checked(None, round(float(value), 1))
 
     @staticmethod
+    def check_binaural_level(key: str, value) -> "Checked":
+        """The volume (percent) or the carrier tone (Hz): a whole number inside the key's range.
+        Only a slider edits them, so anything else is "not on the slider" (the message of the other
+        sliders: no text of its own to translate)."""
+        low, high = BINAURAL_RANGES[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            return Checked(_("This position is not on the slider."), None)
+        return Checked(None, value)
+
+    @staticmethod
+    def check_binaural_enabled(value) -> "Checked":
+        if not isinstance(value, bool):
+            return Checked(_("This must be on or off."), None)
+        return Checked(None, value)
+
+    @staticmethod
     def check_choice(key: str, value) -> "Checked":
         if value not in CHOICES[key]:
             return Checked(_("This choice is not available."), None)
@@ -417,6 +460,19 @@ class PreferencesModel:
         if not checked.ok:
             return SaveResult(False, checked.error)
         return self._store(KEY_TRANSITION_DURATION, checked.value)
+
+    def set_binaural_level(self, key: str, value) -> SaveResult:
+        """Save the volume or the carrier tone (see ``check_binaural_level``)."""
+        checked = self.check_binaural_level(key, value)
+        return self._store(key, checked.value) if checked.ok else SaveResult(False, checked.error)
+
+    def set_binaural_enabled(self, value) -> SaveResult:
+        checked = self.check_binaural_enabled(value)
+        return (
+            self._store(KEY_BINAURAL_ENABLED, checked.value)
+            if checked.ok
+            else SaveResult(False, checked.error)
+        )
 
     def set_choice(self, key: str, value) -> SaveResult:
         checked = self.check_choice(key, value)
@@ -506,6 +562,10 @@ SAVE_ORDER = (
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_SLIDE_INTERVAL_SECONDS,
     KEY_TRANSITION_DURATION,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
 )
 
 
@@ -589,6 +649,12 @@ class Draft:
     def edit_show_screenshots(self, value) -> SaveResult:
         return self._edit(KEY_SHOW_SCREENSHOTS, self._model.check_show_screenshots(value))
 
+    def edit_binaural_level(self, key: str, value) -> SaveResult:
+        return self._edit(key, self._model.check_binaural_level(key, value))
+
+    def edit_binaural_enabled(self, value) -> SaveResult:
+        return self._edit(KEY_BINAURAL_ENABLED, self._model.check_binaural_enabled(value))
+
     def edit_folder(self, text) -> SaveResult:
         return self._edit(KEY_PICTURE_FOLDER, self._model.check_folder(text))
 
@@ -605,6 +671,10 @@ class Draft:
             return self._model.set_show_screenshots(value)
         if key == KEY_TRANSITION_DURATION:
             return self._model.set_duration(value)
+        if key == KEY_BINAURAL_ENABLED:
+            return self._model.set_binaural_enabled(value)
+        if key in BINAURAL_RANGES:
+            return self._model.set_binaural_level(key, value)
         if key in CHOICES:
             return self._model.set_choice(key, value)
         return self._model.set_int(key, value)

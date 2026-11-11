@@ -49,6 +49,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
 from slideshow_lock import APP_ID, _, i18n  # noqa: E402
+from slideshow_lock.binaural import SlideshowSound  # noqa: E402
 from slideshow_lock.image_source import ImageSource, source_from_settings  # noqa: E402
 from slideshow_lock.loop import unix_signal_add  # noqa: E402
 from slideshow_lock.preferences_model import (  # noqa: E402
@@ -62,6 +63,10 @@ from slideshow_lock.preview_window import (  # noqa: E402
 )
 from slideshow_lock.scaling import ImageScaler, probe_loadable  # noqa: E402
 from slideshow_lock.settings import (  # noqa: E402
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_ORDER,
     KEY_PAN_PORTRAIT_IMAGES,
     KEY_PICTURE_FOLDER,
@@ -176,6 +181,18 @@ class SessionSettings:
     def get_transition_duration(self) -> float:
         return self._get(KEY_TRANSITION_DURATION, self._settings.get_transition_duration)
 
+    def get_binaural_enabled(self) -> bool:
+        return self._get(KEY_BINAURAL_ENABLED, self._settings.get_binaural_enabled)
+
+    def get_binaural_volume(self) -> int:
+        return self._get(KEY_BINAURAL_VOLUME, self._settings.get_binaural_volume)
+
+    def get_binaural_beat(self) -> str:
+        return self._get(KEY_BINAURAL_BEAT, self._settings.get_binaural_beat)
+
+    def get_binaural_carrier_hz(self) -> int:
+        return self._get(KEY_BINAURAL_CARRIER_HZ, self._settings.get_binaural_carrier_hz)
+
 
 def build_source(settings) -> ImageSource:
     """The image source for a preview: not started, and with the loader probe in place, so a
@@ -217,14 +234,42 @@ def start_preview(
     controller.connect_stopped(lambda _reason: worker.close())  # do not leave a thread behind
     limit = {"cancel": None}  # the timer of the limit, once the preview is up
     controller.connect_stopped(lambda _reason: _cancel(limit))  # no shot at a stopped preview
+    sound = SlideshowSound(settings)  # plays only if the settings ask for it
+    controller.connect_stopped(lambda _reason: _fade_out(sound, clock, application))
     controller.start()
     if controller.running:
         limit["cancel"] = clock.call_later(
             PREVIEW_LIMIT_SECONDS, lambda: controller.stop("time limit")
         )
+        sound.start()
     if hold is not None and controller.running:  # no monitor: nothing shows, nothing to hold
         hold.take(shown_on[0])
     return controller
+
+
+#: Seconds after the end of the fade-out that the preview waits before it takes the sound down.
+SOUND_CLOSE_MARGIN_SECONDS = 0.3
+
+
+def _fade_out(sound: SlideshowSound, clock, application: Optional[Gtk.Application]) -> None:
+    """The preview ended: begin the fade-out, and keep the application alive until it is over (the
+    command line ends with the preview and the settings window may be closing, and a program that
+    ends cuts the sound off), then take the sound down. Without a sound (nothing started) it is
+    taken down at once."""
+    wait = sound.stop()
+    if wait <= 0:
+        sound.close()
+        return
+    kept = application is not None
+    if kept:
+        application.hold()
+
+    def done() -> None:
+        sound.close()
+        if kept:
+            application.release()
+
+    clock.call_later(wait + SOUND_CLOSE_MARGIN_SECONDS, done)
 
 
 def _cancel(timer: dict) -> None:
@@ -324,7 +369,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         source.start()
         controller = start_preview(settings, source, application)
         state["source"], state["controller"] = source, controller
-        controller.connect_stopped(lambda _reason: GLib.idle_add(application.quit))
+        # release, not quit: a sound that is still fading out holds the application (``_fade_out``)
+        controller.connect_stopped(lambda _reason: GLib.idle_add(application.release))
         if not controller.running:  # no monitor
             application.quit()
 
