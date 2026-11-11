@@ -2,13 +2,18 @@
 
 ``GLib.unix_signal_add`` is gone from the ``GLib`` typelib of glib 2.88 (Fedora 44, rawhide, the
 ubuntu-26.04 runner of the CI), where ``GLibUnix.signal_add`` is the only place; Fedora 43 and EL10
-have both. The helper takes the new place where there is one and the old one where there is not.
+have both. On Fedora 44 and rawhide pygobject keeps the old name working with a deprecation warning
+(measured, 2026-11-11); the ubuntu-26.04 runner has no such wrapper. The helper takes the new place
+where there is one and the old one where there is not, and answers 0 with a warning where there is
+neither.
 """
 
 from __future__ import annotations
 
 import builtins
+import logging
 import signal
+import time
 from types import SimpleNamespace
 
 from gi.repository import GLib
@@ -48,6 +53,15 @@ def test_glib_without_the_old_name_works_through_glibunix(monkeypatch):
     assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 9
 
 
+def test_glib_with_no_signal_watch_at_all_warns_and_answers_zero(monkeypatch, caplog):
+    monkeypatch.setattr(loop, "_glib_unix", lambda: None)
+    monkeypatch.setattr(loop, "GLib", SimpleNamespace())
+    with caplog.at_level(logging.WARNING, logger=loop.__name__):
+        assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 0
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
+    assert str(int(signal.SIGUSR1)) in caplog.records[0].getMessage()
+
+
 def test_a_namespace_the_typelib_lacks_is_none(monkeypatch):
     def refuse(name, version):
         raise ValueError("Namespace %s not available" % name)
@@ -80,9 +94,8 @@ def test_a_signal_reaches_the_callback_on_the_main_loop_and_the_source_goes():
     )
     assert source_id > 0
     signal.raise_signal(signal.SIGUSR1)
-    for _ in range(200):
-        if heard:
-            break
+    deadline = time.monotonic() + 2.0
+    while not heard and time.monotonic() < deadline:
         context.iteration(False)
     assert heard == [1]
     assert context.find_source_by_id(source_id) is None
