@@ -697,11 +697,22 @@ def test_ac5_a_truncated_gif_is_skipped_by_the_decoder_itself(tmp_path, scaler):
     whole.write_bytes(gif)
     (frame,) = scaler.prepare(old(whole), [(10, 10)], "fit")
     assert (frame.width, frame.height) == (10, 10)
-    for cut in (13, 30, 38, len(gif) - 1):
+    for cut in (13, 30, 38):
         path = tmp_path / f"cut{cut}.gif"
         path.write_bytes(gif[:cut])
         with pytest.raises(ImageSkipped, match="cannot be decoded"):
             scaler.prepare(old(path), [(10, 10)], "fit")
+    # Only the trailer byte (";") is missing: the whole picture is there. gdk-pixbuf before 2.44
+    # (glycin) refuses such a file, a newer one loads it (the ubuntu-26.04 runner of the CI); either
+    # is right, so this cut may be skipped or shown whole, and nothing else.
+    path = tmp_path / "no-trailer.gif"
+    path.write_bytes(gif[:-1])
+    try:
+        (frame,) = scaler.prepare(old(path), [(10, 10)], "fit")
+    except ImageSkipped as skipped:
+        assert "cannot be decoded" in str(skipped)
+    else:
+        assert (frame.width, frame.height) == (10, 10)
 
 
 def test_ac5_a_truncated_bmp_is_skipped(tmp_path, scaler):
