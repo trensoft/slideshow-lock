@@ -51,6 +51,7 @@ from gi.repository import Gio, GLib, Gtk  # noqa: E402
 from slideshow_lock import APP_ID, _, i18n  # noqa: E402
 from slideshow_lock.binaural import SlideshowSound  # noqa: E402
 from slideshow_lock.image_source import ImageSource, source_from_settings  # noqa: E402
+from slideshow_lock.loop import unix_signal_add  # noqa: E402
 from slideshow_lock.preferences_model import (  # noqa: E402
     INTERVAL_MAX_SECONDS,
     INTERVAL_MIN_SECONDS,
@@ -381,9 +382,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     app.connect("activate", on_activate)
     app.connect("shutdown", on_shutdown)
     for signum in (signal.SIGINT, signal.SIGTERM):  # ends it like input does, request given back
-        GLib.unix_signal_add(
-            GLib.PRIORITY_DEFAULT, signum, lambda: app.quit() or GLib.SOURCE_REMOVE
-        )
+        unix_signal_add(GLib.PRIORITY_DEFAULT, signum, lambda: app.quit() or GLib.SOURCE_REMOVE)
     status = app.run([sys.argv[0]])
     if state["source"] is not None:
         state["source"].stop()

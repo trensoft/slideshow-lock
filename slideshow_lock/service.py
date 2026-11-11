@@ -50,7 +50,7 @@ from slideshow_lock import (  # noqa: E402
     i18n,
 )
 from slideshow_lock.binaural import SlideshowSound  # noqa: E402
-from slideshow_lock.loop import Poster, current_poster  # noqa: E402
+from slideshow_lock.loop import Poster, current_poster, unix_signal_add  # noqa: E402
 from slideshow_lock.preview import GLibClock, PreviewController, ThreadWorker  # noqa: E402
 from slideshow_lock.preview_app import SessionSettings, build_source  # noqa: E402
 from slideshow_lock.preview_window import (  # noqa: E402
@@ -465,9 +465,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     app.connect("activate", on_activate)
     for signum in (signal.SIGINT, signal.SIGTERM):
-        GLib.unix_signal_add(
-            GLib.PRIORITY_DEFAULT, signum, lambda: app.quit() or GLib.SOURCE_REMOVE
-        )
+        unix_signal_add(GLib.PRIORITY_DEFAULT, signum, lambda: app.quit() or GLib.SOURCE_REMOVE)
     status = app.run([sys.argv[0]])
     if state["service"] is not None:
         state["service"].close()

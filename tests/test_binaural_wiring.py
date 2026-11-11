@@ -644,7 +644,7 @@ def test_the_command_line_gives_its_own_hold_back_instead_of_quitting(monkeypatc
         lambda _settings: SimpleNamespace(start=lambda: None, stop=lambda: None),
     )
     monkeypatch.setattr(preview_app, "start_preview", lambda *_args: controller)
-    monkeypatch.setattr(preview_app.GLib, "unix_signal_add", lambda *_args: 1)
+    monkeypatch.setattr(preview_app, "unix_signal_add", lambda *_args: 1)
     monkeypatch.setattr(preview_app.GLib, "idle_add", lambda fn, *args: callbacks.append(fn) or 1)
     assert preview_app.main([]) == 0
     (application,) = ReleasingApplication.instances
