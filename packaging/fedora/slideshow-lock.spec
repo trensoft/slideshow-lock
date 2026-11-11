@@ -11,8 +11,8 @@
 # (rpmbuild --with tests turns it on). %%check still imports every module and validates the installed files.
 
 Name:           slideshow-lock
-Version:        1.0.10
-Release:        3%{?dist}
+Version:        1.0.11
+Release:        1%{?dist}
 Summary:        Idle slideshow screensaver for GNOME on Wayland that locks on input
 License:        GPL-3.0-or-later AND CC-BY-SA-4.0
 # CC-BY-SA-4.0 is the license of the seven sample pictures (data/pictures/CREDITS.txt)
@@ -168,9 +168,17 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %{_datadir}/%{name}
 
 %changelog
-* Wed Nov 11 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-3
-- Fix the start-up on Fedora 44 and newer (glib 2.88 and newer): the program calls GLibUnix.signal_add
-  there, and GLib.unix_signal_add on older glib; before, it stopped with an AttributeError
+* Thu Nov 12 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.11-1
+- Add an optional binaural sound: two quiet tones, the carrier (200 Hz) in the left ear and the carrier plus
+  a beat (alpha, 10 Hz) in the right one, while the slideshow shows and in the preview; it fades in and out
+  over 1.5 seconds. It is off by default
+- Settings window: a row to switch the sound on and an Adjust button for the volume, the beat (delta 4,
+  theta 6, alpha 10, beta 14 Hz) and the carrier tone (100 to 500 Hz)
+- The lock never waits for the sound: it is made first, and a sound that cannot play (no sound device, a
+  GStreamer element missing) is one line in the log and the slideshow goes on without it
+- Recommend gstreamer1-plugins-good, which has the audio output element
+- Start-up: uses GLibUnix.signal_add where glib provides it (2.79.2 and newer), GLib.unix_signal_add
+  otherwise; no deprecation warning on glib 2.88+
 
 * Mon Oct 19 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-2
 - Simplify %%files for /usr/share/slideshow-lock; trim spec comments (review feedback)

@@ -35,6 +35,12 @@ A screensaver for GNOME on Wayland. When you step away, your pictures fill the s
 - **Set in seconds.** The idle time and the grace period are set in seconds. Each picture can stay on screen from 1 second up to almost a full day.
 - **Try it first.** The Preview button plays the slideshow with your settings. A preview never locks the session, and any key or mouse movement ends it.
 
+## Sound
+
+- **Binaural sound, if you want it.** Two quiet tones, one in each ear, play while the slideshow shows and in the preview. It is off by default, and meant for headphones.
+- **You set the tones.** The volume, the beat (delta, theta, alpha or beta) and the carrier tone, in a small window behind one button.
+- **Never in the way of the lock.** The sound fades in and out over 1.5 seconds. The session is locked first, and if the sound cannot play, the slideshow goes on without it.
+
 ## Install and run
 
 - **RPM packages.** For RHEL 10 and its rebuilds AlmaLinux and Rocky, and for Fedora, from the COPR project `trensoft/slideshow-lock`. Updates come through `dnf`.
