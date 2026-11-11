@@ -7,9 +7,8 @@ have both. The helper takes the new place where there is one and the old one whe
 
 from __future__ import annotations
 
+import builtins
 import signal
-import sys
-import types
 from types import SimpleNamespace
 
 from gi.repository import GLib
@@ -58,9 +57,16 @@ def test_a_namespace_the_typelib_lacks_is_none(monkeypatch):
 
 
 def test_a_namespace_that_cannot_be_imported_is_none_too(monkeypatch):
-    """The version is accepted but the module has no ``GLibUnix``: the old place is the way."""
+    """The version is accepted but the import of ``GLibUnix`` fails: the old place is the way."""
+    real_import = builtins.__import__
+
+    def refusing(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "gi.repository" and "GLibUnix" in (fromlist or ()):
+            raise ImportError("cannot import name 'GLibUnix'")
+        return real_import(name, globals, locals, fromlist, level)
+
     monkeypatch.setattr(loop.gi, "require_version", lambda name, version: None)
-    monkeypatch.setitem(sys.modules, "gi.repository", types.ModuleType("gi.repository"))
+    monkeypatch.setattr(builtins, "__import__", refusing)
     assert loop._glib_unix() is None
 
 
