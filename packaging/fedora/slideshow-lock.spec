@@ -12,7 +12,7 @@
 
 Name:           slideshow-lock
 Version:        1.0.10
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Idle slideshow screensaver for GNOME on Wayland that locks on input
 License:        GPL-3.0-or-later AND CC-BY-SA-4.0
 # CC-BY-SA-4.0 is the license of the seven sample pictures (data/pictures/CREDITS.txt)
@@ -163,6 +163,10 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %{_datadir}/%{name}
 
 %changelog
+* Wed Nov 11 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-3
+- Fix the start-up on Fedora 44 and newer (glib 2.88 and newer): the program calls GLibUnix.signal_add
+  there, and GLib.unix_signal_add on older glib; before, it stopped with an AttributeError
+
 * Mon Oct 19 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-2
 - Simplify %%files for /usr/share/slideshow-lock; trim spec comments (review feedback)
 
