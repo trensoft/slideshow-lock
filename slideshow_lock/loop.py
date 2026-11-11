@@ -12,6 +12,7 @@ block if the target loop is busy or stuck.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 import gi
@@ -19,6 +20,8 @@ import gi
 gi.require_version("GLib", "2.0")
 
 from gi.repository import GLib  # noqa: E402
+
+_LOG = logging.getLogger(__name__)
 
 Poster = Callable[[Callable[[], None]], None]
 
@@ -59,12 +62,20 @@ def _glib_unix():
 
 def unix_signal_add(priority: int, signum: int, callback: Callable[[], bool]) -> int:
     """Call *callback()* on the main loop when the process gets signal *signum*; returns the id of
-    the source. ``GLib.unix_signal_add`` was moved to ``GLibUnix.signal_add`` in glib 2.79.2, and
-    the ``GLib`` typelib of glib 2.88 (Fedora 44, rawhide) no longer has it (measured: the
-    ``glib2`` RPMs of Fedora 43 and EL10 have it in both places, Fedora 44 and rawhide only in
-    ``GLibUnix``): a call to the old name is an ``AttributeError`` at start-up there. So the new
-    place is used where it exists and the old one where it does not (glib before 2.79.2)."""
+    the source, or 0 (and a warning) where this glib has no Unix signal watch at all.
+
+    glib 2.79.2 moved ``GLib.unix_signal_add`` to ``GLibUnix.signal_add``, and the ``GLib`` typelib
+    of glib 2.88 no longer has the old name. The new place is used where it exists and the old one
+    where it does not (glib before 2.79.2): no deprecation warning on glib 2.88 and newer.
+    Measured (the RPMs of each root unpacked and run, 2026-11-11): on Fedora 44 and rawhide the
+    old call too works, because pygobject adds a wrapper that warns; the ubuntu-26.04 CI runner has
+    none, and there the old name is an ``AttributeError``. Without a watch the default action of the
+    signal applies: the program ends without the shutdown of the application."""
     unix = _glib_unix()
     if unix is not None:
         return unix.signal_add(priority, signum, callback)
-    return GLib.unix_signal_add(priority, signum, callback)
+    old = getattr(GLib, "unix_signal_add", None)
+    if old is None:
+        _LOG.warning("no Unix signal watch in this glib: signal %s ends the program as is", signum)
+        return 0
+    return old(priority, signum, callback)
