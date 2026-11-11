@@ -642,7 +642,7 @@ def test_main_hands_the_application_to_the_preview_and_stops_it_at_shutdown(monk
         signal_handlers[signum] = callback
         return 1
 
-    monkeypatch.setattr(preview_app.GLib, "unix_signal_add", fake_unix_signal_add)
+    monkeypatch.setattr(preview_app, "unix_signal_add", fake_unix_signal_add)
     assert preview_app.main([]) == 0
     (application,) = StubGtkApplication.instances
     assert given[0] is application  # the preview is given the application it asks through
@@ -722,7 +722,7 @@ def _main_with_a_real_preview(tmp_path, monkeypatch, clock, windows, between_sta
     monkeypatch.setattr(preview_app, "open_monitor_windows", lambda: windows)
     monkeypatch.setattr(preview_app, "ImageScaler", FakeScaler)
     monkeypatch.setattr(preview_app, "GLibClock", lambda: clock)
-    monkeypatch.setattr(preview_app.GLib, "unix_signal_add", lambda *_args: 1)
+    monkeypatch.setattr(preview_app, "unix_signal_add", lambda *_args: 1)
     monkeypatch.setattr(preview_app.GLib, "idle_add", lambda *_args: 1)  # no main loop here
     assert preview_app.main([]) == 0
     (application,) = AskingGtkApplication.instances
