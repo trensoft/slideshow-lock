@@ -240,6 +240,67 @@ def test_a_start_with_other_frequencies_opens_a_new_pipeline():
     assert rig.backend.volumes[0] == 0.0
 
 
+def test_a_start_that_changes_only_the_beat_opens_a_new_pipeline():
+    """The carrier is the same (200 Hz), only the right channel moves (204 -> 210 Hz): the old
+    pipeline would play the old beat if the right frequency were not compared."""
+    rig = Rig()
+    rig.player.start(Tone(200.0, 204.0, 0.5))
+    rig.pump_at(0.0, rig.now)
+    first = rig.backend
+    rig.player.start(Tone(200.0, 210.0, 0.5))
+    rig.pump_at(0.0, rig.now)
+    assert first.closed
+    assert len(rig.backends) == 2
+    assert rig.backend.opened == (200.0, 210.0)
+
+
+def test_close_without_wait_does_not_join_the_worker_and_the_default_does():
+    joined = []
+
+    class Thread:
+        def join(self, timeout=None):
+            joined.append(timeout)
+
+    for wait, expected in ((False, []), (True, [2.0])):
+        joined.clear()
+        player = BinauralPlayer(lambda: FakeBackend([]), start_thread=False)
+        player._thread = Thread()
+        player.close(wait=wait)
+        assert joined == expected
+
+
+def test_close_without_wait_returns_at_once_while_the_device_hangs_in_the_teardown():
+    release = threading.Event()
+    entered = threading.Event()
+    made = []
+
+    class Hanging(FakeBackend):
+        def close(self):
+            entered.set()
+            release.wait(30)
+            super().close()
+
+    def factory():
+        backend = Hanging([])
+        made.append(backend)
+        return backend
+
+    player = BinauralPlayer(factory, fade_seconds=0.0, step_seconds=0.001)
+    player.start(TONE)
+    deadline = time.monotonic() + 5
+    while not made and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert made, "the worker never opened the pipeline"
+    began = time.monotonic()
+    player.close(wait=False)
+    took = time.monotonic() - began
+    assert entered.wait(5), "the worker never reached the teardown"
+    assert took < 0.5, f"close(wait=False) waited {took:.2f}s"
+    release.set()
+    player._thread.join(5)
+    assert made[0].closed
+
+
 def test_the_fade_in_counts_from_the_moment_the_sound_is_open():
     """A slow device must not eat the fade-in: the ramp starts when the pipeline is up."""
     rig = Rig()
@@ -732,8 +793,8 @@ class _Player:
             raise self.stop_error
         return self.wait
 
-    def close(self):
-        self.calls.append(("close",))
+    def close(self, wait=True):
+        self.calls.append(("close", wait))
         if self.close_error:
             raise self.close_error
 
@@ -759,7 +820,8 @@ def test_the_slideshow_sound_stop_gives_the_players_wait_and_close_closes():
     sound = binaural.SlideshowSound(_Values(), player)
     assert sound.stop() == 1.5
     sound.close()
-    assert player.calls == [("stop",), ("close",)]
+    sound.close(wait=False)
+    assert player.calls == [("stop",), ("close", True), ("close", False)]
 
 
 def test_the_slideshow_sound_swallows_what_the_player_raises(caplog):

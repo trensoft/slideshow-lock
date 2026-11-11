@@ -36,8 +36,7 @@ The slideshow and the lock are the parts the program is for; the sound is a side
 * **Order.** `PreviewSlideshow` begins the fade-out through the main loop's poster (`loop.current_poster`), so it runs
   after the code that ended the slideshow has gone on to make its lock call: the lock call goes out first, the sound
   fades in the background. The state machine does not know the sound exists; no protocol of `session.py` has it.
-* **Failure.** No GStreamer, a missing element, no sound device, a pipeline that does not start, a device that goes
-  away: one `[sound]` warning, the slideshow goes on without sound, and the next slideshow tries again. A sound that plays logs one `[sound] playing (...)` line at INFO, which is what to look for when no sound is heard. `start` and
+* **Failure.** No GStreamer, a missing element, no sound device, or a pipeline that does not start: one `[sound]` warning, the slideshow goes on without sound, and the next slideshow tries again. A device that goes away in the middle of a slideshow is not noticed: nothing reads the bus of the pipeline, so there is no `[sound]` warning for it (not measured with a real device). A sound that plays logs one `[sound] playing (...)` line at INFO, which is what to look for when no sound is heard. `start` and
   `stop` never raise; `PreviewSlideshow` catches whatever the sound raises all the same.
 * **The schema.** The service reads the four keys when a slideshow starts. GLib aborts the process at a key the
   installed schema lacks, and the service is what locks, so `Settings` asks the schema first (`_get_with_default`) and

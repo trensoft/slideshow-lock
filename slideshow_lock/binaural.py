@@ -46,7 +46,8 @@ FADE_SECONDS = 1.5
 #: How often the worker sets the volume while a ramp runs (50 Hz: a step is under 1 % of the level).
 STEP_SECONDS = 0.02
 
-#: How often the worker looks at a pipeline that has settled (it only watches for the end).
+#: How often the worker wakes while a pipeline has settled: it sets the same volume again. It does
+#: not read the bus, so a device that goes away in the middle of a slideshow is not noticed.
 IDLE_SECONDS = 1.0
 
 #: The beat presets, in Hz: the right channel is the carrier plus this.
@@ -273,9 +274,11 @@ class BinauralPlayer:
             self._cond.notify_all()
         return self._fade if wanted else 0.0
 
-    def close(self) -> None:
-        """Take the pipeline down now, without a fade, and stop the worker. Waits for the worker
-        for a moment at most. Idempotent."""
+    def close(self, wait: bool = True) -> None:
+        """Take the pipeline down now, without a fade, and stop the worker. With *wait* it waits
+        for the worker for 2 s at most (the program that is ending); without, it returns at once
+        and the worker (a daemon thread) takes the pipeline down on its own (the preview, which
+        runs on a main loop that a hanging device must not hold). Idempotent."""
         with self._cond:
             if self._closed:
                 return
@@ -285,7 +288,8 @@ class BinauralPlayer:
             thread = self._thread
             self._cond.notify_all()
         if thread is not None:
-            thread.join(2.0)
+            if wait:
+                thread.join(2.0)
         else:
             self._teardown()
 
@@ -440,10 +444,10 @@ class SlideshowSound:
             _LOG.warning("[sound] the sound could not be stopped (%s)", exc)
             return 0.0
 
-    def close(self) -> None:
+    def close(self, wait: bool = True) -> None:
         """Take the pipeline down at once and end the worker thread (the program is ending, or
-        this sound will not be used again)."""
+        this sound will not be used again). Without *wait* it does not wait for the worker."""
         try:
-            self._player.close()
+            self._player.close(wait=wait)
         except Exception as exc:
             _LOG.warning("[sound] closing the sound failed (%s)", exc)
