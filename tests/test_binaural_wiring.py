@@ -449,6 +449,7 @@ class SoundDouble:
         self.settings = settings
         self.wait = wait
         self.calls = []
+        self.close_waits = []
         SoundDouble.instances.append(self)
 
     def start(self):
@@ -458,8 +459,9 @@ class SoundDouble:
         self.calls.append("stop")
         return self.wait
 
-    def close(self):
+    def close(self, wait=True):
         self.calls.append("close")
+        self.close_waits.append(wait)
 
 
 class HoldingApplication(FakeApplication):
@@ -550,6 +552,20 @@ def test_a_preview_without_an_application_closes_its_sound_after_the_fade_out(
     windows[0].fire_input()
     clock.advance(FADE_SECONDS + SOUND_CLOSE_MARGIN_SECONDS)
     assert sound.calls == ["start", "stop", "close"]
+
+
+def test_the_preview_never_waits_for_the_sound_worker_when_it_closes_the_sound(
+    tmp_path, monkeypatch
+):
+    """The preview closes on the main loop of the settings window: a device that hangs while it is
+    taken down must not stop that loop for the 2 s that the service's exit path may wait."""
+    controller, sound, clock, windows = preview_with_sound(tmp_path, monkeypatch)
+    windows[0].fire_input()
+    clock.advance(FADE_SECONDS + SOUND_CLOSE_MARGIN_SECONDS)
+    assert sound.close_waits == [False]
+    controller, sound, clock, windows = preview_with_sound(tmp_path, monkeypatch, wait=0.0)
+    windows[0].fire_input()
+    assert sound.close_waits == [False]
 
 
 def test_the_preview_reads_the_sound_from_its_own_settings(tmp_path, monkeypatch):

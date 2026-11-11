@@ -258,14 +258,14 @@ def _fade_out(sound: SlideshowSound, clock, application: Optional[Gtk.Applicatio
     taken down at once."""
     wait = sound.stop()
     if wait <= 0:
-        sound.close()
+        sound.close(wait=False)
         return
     kept = application is not None
     if kept:
         application.hold()
 
     def done() -> None:
-        sound.close()
+        sound.close(wait=False)
         if kept:
             application.release()
 
