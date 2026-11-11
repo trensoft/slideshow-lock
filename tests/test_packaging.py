@@ -325,6 +325,15 @@ def test_the_epel_loaders_are_weak_dependencies_and_never_required():
     assert not required & {"webp-pixbuf-loader", "gdk-pixbuf2-modules-extra"}
 
 
+@pytest.mark.parametrize("package", ["gstreamer1-plugins-base", "gstreamer1-plugins-good"])
+def test_the_spec_recommends_the_gstreamer_packages_the_binaural_sound_needs(package):
+    """The tones are made by elements of plugins-base and go out through autoaudiosink of
+    plugins-good (measured in the Fedora 43 and CentOS Stream 10 repositories). A weak dependency:
+    the sound is off by default and a missing element is one log line, never a failed start."""
+    assert [c for p, c in _conditions_of("Recommends:") if p == package] == [[]]  # once, bare
+    assert package not in {p for p, _ in _conditions_of("Requires:")}
+
+
 def test_the_conditions_helper_sees_an_unconditional_line_and_a_nested_one(tmp_path, monkeypatch):
     """Negative control of the two tests above: the reader tells a bare line from a guarded one."""
     fake = tmp_path / "x.spec"

@@ -57,6 +57,11 @@ Requires:       gobject-introspection
 Requires:       hicolor-icon-theme
 Recommends:     gstreamer1-plugins-base
 # optional: scaling falls back to GdkPixbuf bilinear without the GStreamer videoscale element
+Recommends:     gstreamer1-plugins-good
+# optional: the binaural sound (off by default) plays through autoaudiosink, which is in this package;
+# the two tones come from audiotestsrc, audioconvert, audiomixer and volume of gstreamer1-plugins-base
+# above. Both packages are in Fedora and in the EL10 AppStream (EPEL is not needed). Without one of
+# them the slideshow runs without the sound and the log has one [sound] line
 
 %if 0%{?rhel}
 # On EL10 the TIFF and GIF loaders are in gdk-pixbuf2-modules; the BMP and WebP ones are only in
