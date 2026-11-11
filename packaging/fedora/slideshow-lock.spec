@@ -177,6 +177,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 - The lock never waits for the sound: it is made first, and a sound that cannot play (no sound device, a
   GStreamer element missing) is one line in the log and the slideshow goes on without it
 - Recommend gstreamer1-plugins-good, which has the audio output element
+- Start-up: uses GLibUnix.signal_add where glib provides it (2.79.2 and newer), GLib.unix_signal_add
+  otherwise; no deprecation warning on glib 2.88+
 
 * Mon Oct 19 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.10-2
 - Simplify %%files for /usr/share/slideshow-lock; trim spec comments (review feedback)
