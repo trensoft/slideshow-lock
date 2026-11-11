@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: slideshow-lock\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-09 17:26+0000\n"
+"POT-Creation-Date: 2026-11-11 19:04+0000\n"
 "PO-Revision-Date: 2026-10-06 03:54+0000\n"
 "Last-Translator: Slideshow Lock contributors\n"
 "Language-Team: Hungarian\n"
@@ -51,6 +51,22 @@ msgstr "Kitöltés (levágja a kép egy részét)"
 #: slideshow_lock/preferences.py
 msgid "Fit (shows the whole picture)"
 msgstr "Illesztés (a teljes képet mutatja)"
+
+#: slideshow_lock/preferences.py
+msgid "Delta (4 Hz)"
+msgstr "Delta (4 Hz)"
+
+#: slideshow_lock/preferences.py
+msgid "Theta (6 Hz)"
+msgstr "Théta (6 Hz)"
+
+#: slideshow_lock/preferences.py
+msgid "Alpha (10 Hz)"
+msgstr "Alfa (10 Hz)"
+
+#: slideshow_lock/preferences.py
+msgid "Beta (14 Hz)"
+msgstr "Béta (14 Hz)"
 
 #: slideshow_lock/preferences.py
 msgid "None (change at once)"
@@ -176,6 +192,34 @@ msgid "Transitions"
 msgstr "Átmenetek"
 
 #: slideshow_lock/preferences.py
+msgid "Adjust..."
+msgstr "Beállítás..."
+
+#: slideshow_lock/preferences.py
+msgid "Binaural sound"
+msgstr "Binaurális hang"
+
+#: slideshow_lock/preferences.py
+msgid "Volume"
+msgstr "Hangerő"
+
+#: slideshow_lock/preferences.py
+msgid "percent"
+msgstr "százalék"
+
+#: slideshow_lock/preferences.py
+msgid "Beat"
+msgstr "Ütem"
+
+#: slideshow_lock/preferences.py
+msgid "Carrier tone"
+msgstr "Vivőhang"
+
+#: slideshow_lock/preferences.py
+msgid "Hz"
+msgstr "Hz"
+
+#: slideshow_lock/preferences.py
 msgid "Idle time"
 msgstr "Tétlenségi idő"
 
@@ -215,6 +259,14 @@ msgstr "Előnézet"
 #: slideshow_lock/preferences.py
 msgid "Donate"
 msgstr "Adomány"
+
+#: slideshow_lock/preferences.py
+msgid ""
+"Two quiet tones, one in each ear, while the slideshow shows and in the "
+"preview. Best with headphones. Off by default."
+msgstr ""
+"Két halk hang, egy-egy a két fülben, amíg a diavetítés fut, és az "
+"előnézetben is. Fejhallgatóval a legjobb. Alapból ki van kapcsolva."
 
 #: slideshow_lock/preferences.py
 msgid "10 s"
@@ -336,12 +388,12 @@ msgid "This position is not on the slider."
 msgstr "Ez az állás nincs a csúszkán."
 
 #: slideshow_lock/preferences_model.py
-msgid "This choice is not available."
-msgstr "Ez a lehetőség nem érhető el."
-
-#: slideshow_lock/preferences_model.py
 msgid "This must be on or off."
 msgstr "Ennek bekapcsoltnak vagy kikapcsoltnak kell lennie."
+
+#: slideshow_lock/preferences_model.py
+msgid "This choice is not available."
+msgstr "Ez a lehetőség nem érhető el."
 
 #: slideshow_lock/preferences_model.py
 msgid "Enter a folder path."

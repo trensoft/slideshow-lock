@@ -24,6 +24,12 @@ theirs) also asks the desktop not to blank the screen under it: `IdleHold` calls
 preview code still names no bus and no session; it is an idle request, not a lock call. Lifetime
 and limits: section 2.1.
 
+A preview plays the binaural sound too, when the settings ask for it (`binaural-enabled`): `start_preview` starts a
+`binaural.SlideshowSound` once the windows are up and fades it out when the preview ends, whichever way. The
+application is held until the fade-out is over (`preview_app._fade_out`), so the command line, or a settings window
+that is closing, does not cut the sound off. The sound is in `docs/binaural.md`; it is not part of the controller,
+which still knows nothing of it.
+
 Not in this card: locking, the state machine, D-Bus, systemd (CORE-1); the settings window
 (UI-1); changing the default of the pan switch. Since 1.0.1 a picture can come in with one of ten
 transitions (section 2, "Transitions").

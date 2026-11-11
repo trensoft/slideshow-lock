@@ -44,6 +44,7 @@ class _Program:
         self.hung = False
         self.watchdogs = []
         self.slideshows = []  # (controller, source, overview) of every PreviewSlideshow made
+        self.sounds = []  # the sound each PreviewSlideshow was given
 
 
 @pytest.fixture
@@ -55,8 +56,9 @@ def program(monkeypatch):
     monkeypatch.setattr(service, "build_source", lambda settings: prog.source)
     monkeypatch.setattr(service, "PreviewController", lambda *args, **kwargs: object())
 
-    def slideshow(controller, source, overview=None):
+    def slideshow(controller, source, overview=None, sound=None):
         prog.slideshows.append((controller, source, overview))
+        prog.sounds.append(sound)
         return object()
 
     monkeypatch.setattr(service, "PreviewSlideshow", slideshow)
@@ -141,3 +143,25 @@ def test_main_gives_the_slideshow_the_overview_adapter_of_the_shell(program, mon
     [(_controller, source, overview)] = program.slideshows
     assert source is program.source
     assert isinstance(overview, service.dbus_adapters.GnomeShellOverview)
+
+
+def test_main_gives_the_slideshow_a_binaural_sound_and_closes_it_at_the_end(program, monkeypatch):
+    """The wiring of ``main`` for the sound: the ``PreviewSlideshow`` it builds gets a
+    ``SlideshowSound`` on the settings of this run, and the program takes it down when it ends (its
+    worker thread and a pipeline that is still fading out)."""
+    closed = []
+
+    class Stub:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(service, "build_service", lambda *args, **kwargs: Stub())
+    real_close = service.SlideshowSound.close
+    monkeypatch.setattr(
+        service.SlideshowSound, "close", lambda self: (closed.append(self), real_close(self))
+    )
+    GLib.timeout_add(300, lambda: service.signal.raise_signal(service.signal.SIGTERM) or False)
+    assert service.main(["--folder", "/nonexistent"]) == 0
+    [sound] = program.sounds
+    assert isinstance(sound, service.SlideshowSound)
+    assert closed == [sound]

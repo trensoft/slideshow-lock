@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from slideshow_lock import about, preferences
+from slideshow_lock.binaural import BEAT_PRESETS
 from slideshow_lock.preferences import PreferencesWindow, _choice_labels, _transition_labels
 from slideshow_lock.preferences_model import (
     CHOICES,
@@ -23,6 +24,9 @@ from slideshow_lock.preferences_model import (
     SaveResult,
 )
 from slideshow_lock.settings import (
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_ORDER,
     KEY_PICTURE_FOLDER,
@@ -540,6 +544,61 @@ def test_an_edit_that_cannot_be_stored_says_so_is_thrown_away_and_the_fields_go_
     assert window.labels[-1] not in ("", "Saved.")
     assert not window._draft.dirty  # not kept to be tried again behind the user's back
     assert "refresh" in window.log and _stored(KEY_ORDER) == "random"
+
+
+def test_the_sound_switch_stores_the_edit_at_once():
+    window = _editing_stand_in()
+    window.sound_switch = SimpleNamespace(get_active=lambda: True)
+    PreferencesWindow._on_sound(window)
+    assert Settings().get_binaural_enabled() is True and window._draft.pending == {}
+    assert window.labels[-1] == "Saved."
+
+
+def test_the_sound_switch_set_by_the_window_itself_stores_nothing():
+    window = _editing_stand_in()
+    window._updating = True
+    window.sound_switch = SimpleNamespace(get_active=lambda: True)
+    PreferencesWindow._on_sound(window)
+    assert Settings().get_binaural_enabled() is False
+
+
+def test_each_sound_slider_stores_its_own_key():
+    window = _editing_stand_in()
+    window.volume_scale = SimpleNamespace(get_value=lambda: 64.0)
+    window.carrier_scale = SimpleNamespace(get_value=lambda: 310.0)
+    PreferencesWindow._on_sound_level(window, KEY_BINAURAL_VOLUME)
+    assert (Settings().get_binaural_volume(), Settings().get_binaural_carrier_hz()) == (64, 200)
+    PreferencesWindow._on_sound_level(window, KEY_BINAURAL_CARRIER_HZ)
+    assert (Settings().get_binaural_volume(), Settings().get_binaural_carrier_hz()) == (64, 310)
+    assert window._draft.pending == {}
+
+
+def test_a_sound_slider_rounds_to_a_whole_number_and_one_set_by_the_window_stores_nothing():
+    window = _editing_stand_in()
+    window.volume_scale = SimpleNamespace(get_value=lambda: 64.6)
+    PreferencesWindow._on_sound_level(window, KEY_BINAURAL_VOLUME)
+    assert Settings().get_binaural_volume() == 65
+    window._updating = True
+    window.volume_scale = SimpleNamespace(get_value=lambda: 10.0)
+    PreferencesWindow._on_sound_level(window, KEY_BINAURAL_VOLUME)
+    assert Settings().get_binaural_volume() == 65
+
+
+def test_the_beat_drop_down_stores_the_preset_of_its_index():
+    window = _editing_stand_in()
+    window.beat_drop = SimpleNamespace(
+        get_selected=lambda: CHOICES[KEY_BINAURAL_BEAT].index("theta")
+    )
+    PreferencesWindow._on_choice(window, KEY_BINAURAL_BEAT)
+    assert Settings().get_binaural_beat() == "theta" and window._draft.pending == {}
+
+
+def test_the_beat_labels_are_the_presets_in_the_order_of_the_choices_with_their_frequencies():
+    labels = _choice_labels()[KEY_BINAURAL_BEAT]
+    assert len(labels) == len(CHOICES[KEY_BINAURAL_BEAT])
+    for name, label in zip(CHOICES[KEY_BINAURAL_BEAT], labels):
+        assert label.lower().startswith(name)
+        assert "(%d Hz)" % BEAT_PRESETS[name] in label
 
 
 # -- there is no Save button, and nothing scrolls -----------------------------------------------

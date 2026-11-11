@@ -31,7 +31,7 @@ from slideshow_lock.binaural import (
 )
 from tests.timeout_guard import per_test_deadline  # noqa: F401  (autouse fixture)
 
-# -- fakes ----------------------------------------------------------------------------------
+# -- fakes ---------------------------------------------------------------------------------------
 
 
 class FakeBackend:
@@ -86,7 +86,7 @@ class Rig:
 TONE = Tone(200.0, 210.0, 0.30)
 
 
-# -- the tone -------------------------------------------------------------------------------
+# -- the tone ------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name, beat_hz", [("delta", 4), ("theta", 6), ("alpha", 10), ("beta", 14)])
@@ -123,7 +123,7 @@ def test_a_carrier_outside_its_range_is_cut_and_an_unknown_beat_is_alpha():
     assert (unknown.left_hz, unknown.right_hz) == (200.0, 210.0)
 
 
-# -- the ramp -------------------------------------------------------------------------------
+# -- the ramp ------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -285,11 +285,12 @@ def test_close_takes_the_pipeline_down_at_once_and_a_later_start_is_ignored():
     assert len(rig.backends) == 1
 
 
-# -- failure and absence: a line in the log, no exception, no sound -------------------------
+# -- failure and absence: a line in the log, no exception, no sound ------------------------------
 
 
-def _sound_lines(caplog):
-    return [r for r in caplog.records if "[sound]" in r.getMessage()]
+def _sound_lines(caplog, level=logging.WARNING):
+    """The ``[sound]`` lines of at least *level* (the warnings by default: the failures)."""
+    return [r for r in caplog.records if "[sound]" in r.getMessage() and r.levelno >= level]
 
 
 def test_no_backend_at_all_is_one_log_line_and_no_exception(caplog):
@@ -357,7 +358,7 @@ def test_a_pipeline_that_cannot_be_closed_does_not_raise(caplog):
         rig.player.close()  # must not raise
 
 
-# -- the main thread never waits for the device ------------------------------------------------
+# -- the main thread never waits for the device --------------------------------------------------
 
 
 def test_start_stop_and_close_do_not_wait_for_a_device_that_hangs():
@@ -547,7 +548,7 @@ def test_the_module_is_on_its_own():
     assert imported <= {"__future__", "logging", "threading", "time", "dataclasses", "typing"}
 
 
-# -- the real pipeline ----------------------------------------------------------------------
+# -- the real pipeline ---------------------------------------------------------------------------
 
 
 def _gst():
@@ -662,3 +663,122 @@ def test_a_pipeline_whose_sink_cannot_start_is_a_failure_not_a_silent_success():
     with pytest.raises(RuntimeError, match="could not be started"):
         backend.open(200.0, 210.0)
     assert backend._pipeline is None  # and nothing is left running
+
+
+# -- the settings -> tone, and what the slideshow calls ------------------------------------------
+
+
+class _Values:
+    def __init__(self, enabled=True, volume=30, beat="alpha", carrier=200):
+        self.enabled, self.volume, self.beat, self.carrier = enabled, volume, beat, carrier
+
+    def get_binaural_enabled(self):
+        return self.enabled
+
+    def get_binaural_volume(self):
+        return self.volume
+
+    def get_binaural_beat(self):
+        return self.beat
+
+    def get_binaural_carrier_hz(self):
+        return self.carrier
+
+
+def test_the_settings_make_the_tone_they_describe():
+    tone = binaural.tone_from_settings(_Values(volume=45, beat="beta", carrier=300))
+    assert (tone.left_hz, tone.right_hz, tone.volume) == (300.0, 314.0, 0.45)
+
+
+def test_a_sound_that_is_off_is_no_tone():
+    assert binaural.tone_from_settings(_Values(enabled=False)) is None
+
+
+def test_settings_without_the_sound_getters_mean_no_sound_and_no_log_line(caplog):
+    with caplog.at_level(logging.DEBUG):
+        assert binaural.tone_from_settings(object()) is None
+    assert _sound_lines(caplog) == []
+
+
+def test_settings_that_cannot_be_read_mean_no_sound_and_one_log_line(caplog):
+    class Broken(_Values):
+        def get_binaural_volume(self):
+            raise RuntimeError("the store is gone")
+
+    with caplog.at_level(logging.DEBUG):
+        assert binaural.tone_from_settings(Broken()) is None
+    (line,) = _sound_lines(caplog)
+    assert line.levelno == logging.WARNING and "the store is gone" in line.getMessage()
+
+
+class _Player:
+    def __init__(self, start_error=None, stop_error=None, close_error=None, wait=1.5):
+        self.calls = []
+        self.start_error, self.stop_error, self.close_error, self.wait = (
+            start_error,
+            stop_error,
+            close_error,
+            wait,
+        )
+
+    def start(self, tone):
+        self.calls.append(("start", tone))
+        if self.start_error:
+            raise self.start_error
+
+    def stop(self):
+        self.calls.append(("stop",))
+        if self.stop_error:
+            raise self.stop_error
+        return self.wait
+
+    def close(self):
+        self.calls.append(("close",))
+        if self.close_error:
+            raise self.close_error
+
+
+def test_the_slideshow_sound_starts_the_player_with_the_tone_of_the_settings():
+    player = _Player()
+    binaural.SlideshowSound(_Values(volume=50), player).start()
+    assert player.calls == [("start", make_tone(50))]
+
+
+def test_the_slideshow_sound_reads_the_settings_at_each_start():
+    values, player = _Values(enabled=False), _Player()
+    sound = binaural.SlideshowSound(values, player)
+    sound.start()
+    assert player.calls == []
+    values.enabled, values.beat = True, "delta"
+    sound.start()
+    assert player.calls == [("start", make_tone(30, "delta"))]
+
+
+def test_the_slideshow_sound_stop_gives_the_players_wait_and_close_closes():
+    player = _Player(wait=1.5)
+    sound = binaural.SlideshowSound(_Values(), player)
+    assert sound.stop() == 1.5
+    sound.close()
+    assert player.calls == [("stop",), ("close",)]
+
+
+def test_the_slideshow_sound_swallows_what_the_player_raises(caplog):
+    player = _Player(
+        start_error=RuntimeError("a"), stop_error=RuntimeError("b"), close_error=RuntimeError("c")
+    )
+    sound = binaural.SlideshowSound(_Values(), player)
+    with caplog.at_level(logging.DEBUG):
+        sound.start()
+        assert sound.stop() == 0.0
+        sound.close()
+    assert len(_sound_lines(caplog)) == 3
+
+
+def test_a_sound_that_plays_is_one_info_line_with_the_tone_and_a_failure_is_not(caplog):
+    rig = Rig()
+    with caplog.at_level(logging.INFO):
+        rig.player.start(make_tone(40, "theta", 300))
+        rig.pump_at(0.0, rig.now)
+    (line,) = _sound_lines(caplog, logging.INFO)
+    assert line.levelno == logging.INFO
+    assert line.getMessage() == "[sound] playing (left 300.0 Hz, right 306.0 Hz, volume 40 %)"

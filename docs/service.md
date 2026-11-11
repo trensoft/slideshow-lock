@@ -96,7 +96,8 @@ forms were not tried.
 | `state_machine.py` | The states and transitions of ARCH-1 section 4. Depends on the protocols only. |
 | `sleep_guard.py` | The lock before suspend (`SleepGuard`) and the thread it runs on (`GuardThread`). |
 | `dbus_adapters.py` | The real adapters on `Gio.DBusConnection` (the overview of the shell included: `GnomeShellOverview`). |
-| `service.py` | Wiring (`build_service`), the preview as a `SlideshowControl` (`PreviewSlideshow`, which closes the shell's overview before it opens the windows), the program. |
+| `service.py` | Wiring (`build_service`), the preview as a `SlideshowControl` (`PreviewSlideshow`, which closes the shell's overview before it opens the windows and starts and fades out the binaural sound, `docs/binaural.md`), the program. |
+| `binaural.py` | The binaural sound: two tones, on a thread of its own, with fades. No D-Bus, no session, no lock: the lock never depends on it. |
 | `control.py` | The entry point of `slideshowlock`: starts the service unit through the user's systemd (`SystemdUserManager`), then the settings window; the login start opens the window once. |
 | `loop.py` | Posting a function to a GLib main context from any thread. |
 

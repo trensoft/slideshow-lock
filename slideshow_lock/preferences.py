@@ -60,6 +60,8 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from slideshow_lock import APP_ID, _, about, i18n  # noqa: E402
 from slideshow_lock.preferences_model import (  # noqa: E402
+    BINAURAL_RANGES,
+    CARRIER_STEP_HZ,
     CHOICES,
     DURATION_MAX_SECONDS,
     DURATION_MIN_SECONDS,
@@ -80,6 +82,10 @@ from slideshow_lock.preview_app import (  # noqa: E402
     start_preview,
 )
 from slideshow_lock.settings import (  # noqa: E402
+    KEY_BINAURAL_BEAT,
+    KEY_BINAURAL_CARRIER_HZ,
+    KEY_BINAURAL_ENABLED,
+    KEY_BINAURAL_VOLUME,
     KEY_IDLE_TIMEOUT_SECONDS,
     KEY_LOCK_GRACE_PERIOD_SECONDS,
     KEY_ORDER,
@@ -114,11 +120,25 @@ def version_text() -> str:
     return f"{program_version()} by {about.DEVELOPER}"
 
 
+#: The attribute of the window that holds the drop-down of each plain choice key.
+_DROP_ATTRIBUTES = {
+    KEY_ORDER: "order_drop",
+    KEY_SCALING: "scaling_drop",
+    KEY_BINAURAL_BEAT: "beat_drop",
+}
+
+
 def _choice_labels():
     """What the drop-downs list, in the order of ``CHOICES`` (the values stay English)."""
     return {
         KEY_ORDER: (_("Random"), _("By file name")),
         KEY_SCALING: (_("Fill the screen (crops the picture)"), _("Fit (shows the whole picture)")),
+        KEY_BINAURAL_BEAT: (
+            _("Delta (4 Hz)"),
+            _("Theta (6 Hz)"),
+            _("Alpha (10 Hz)"),
+            _("Beta (14 Hz)"),
+        ),
     }
 
 
@@ -242,6 +262,36 @@ class PreferencesWindow(Adw.ApplicationWindow):
         transitions_group.add(self.transition_drop)
         transitions_group.add(duration_row)
 
+        # -- sound: the binaural tones while the slideshow shows (and in the preview) ------------
+        # One row, with the switch, in the "Start the slideshow" group; the volume, the beat and the
+        # carrier tone are in a small window that the "Adjust..." button opens. The two columns
+        # of this window already fill 1366 x 768, so a group of its own does not fit.
+        self.sound_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.sound_switch.connect("notify::active", lambda *_a: self._on_sound())
+        self.sound_button = Gtk.Button(label=_("Adjust..."), valign=Gtk.Align.CENTER)
+        self.sound_button.connect("clicked", lambda _button: self._show_sound_window())
+        sound_row = Adw.ActionRow(title=_("Binaural sound"))
+        sound_row.add_suffix(self.sound_button)
+        sound_row.add_suffix(self.sound_switch)
+        sound_row.set_activatable_widget(self.sound_switch)
+        volume_low, volume_high = BINAURAL_RANGES[KEY_BINAURAL_VOLUME]
+        self.volume_scale = self._whole_scale(volume_low, volume_high, 1, 5)
+        self.volume_scale.connect(
+            "value-changed", lambda _scale: self._on_sound_level(KEY_BINAURAL_VOLUME)
+        )
+        volume_row = Adw.ActionRow(title=_("Volume"))
+        volume_row.add_suffix(self._with_unit(self.volume_scale, _("percent")))
+        self.beat_drop = self._combo(_("Beat"), labels[KEY_BINAURAL_BEAT])
+        self.beat_drop.connect("notify::selected", lambda *_a: self._on_choice(KEY_BINAURAL_BEAT))
+        carrier_low, carrier_high = BINAURAL_RANGES[KEY_BINAURAL_CARRIER_HZ]
+        self.carrier_scale = self._whole_scale(carrier_low, carrier_high, CARRIER_STEP_HZ, 50)
+        self.carrier_scale.connect(
+            "value-changed", lambda _scale: self._on_sound_level(KEY_BINAURAL_CARRIER_HZ)
+        )
+        carrier_row = Adw.ActionRow(title=_("Carrier tone"))
+        carrier_row.add_suffix(self._with_unit(self.carrier_scale, _("Hz")))
+        self.sound_window = self._sound_window(volume_row, self.beat_drop, carrier_row)
+
         # -- start the slideshow: the idle time ---------------------------------------------
         self.idle_spin = self._spin(KEY_IDLE_TIMEOUT_SECONDS)
         idle_row = Adw.ActionRow(
@@ -250,6 +300,7 @@ class PreferencesWindow(Adw.ApplicationWindow):
         idle_row.add_suffix(self._with_unit(self.idle_spin, _("seconds")))
         idle_group = Adw.PreferencesGroup(title=_("Start the slideshow"))
         idle_group.add(idle_row)
+        idle_group.add(sound_row)
 
         # -- timing: the slide interval on one slider; the grace period -------------------------
         self.interval_total = Gtk.Label(label="00:00:01", halign=Gtk.Align.CENTER)
@@ -355,6 +406,53 @@ class PreferencesWindow(Adw.ApplicationWindow):
             row.set_subtitle(subtitle)
         return row
 
+    def _sound_window(self, *rows: Gtk.Widget) -> Adw.Window:
+        """The small window of the sound's volume, beat and carrier tone (hidden, not destroyed,
+        when it is closed: the fields live on and ``refresh`` keeps them current)."""
+        group = Adw.PreferencesGroup(
+            description=_(
+                "Two quiet tones, one in each ear, while the slideshow shows and in the "
+                "preview. Best with headphones. Off by default."
+            )
+        )
+        for row in rows:
+            group.add(row)
+        for margin in ("top", "bottom", "start", "end"):
+            getattr(group, "set_margin_" + margin)(MARGIN)
+        # without the clamp the description would not wrap and the window would be as wide as it
+        clamp = Adw.Clamp(maximum_size=COLUMN_WIDTH, tightening_threshold=COLUMN_WIDTH)
+        clamp.set_child(group)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        body.append(Adw.HeaderBar())
+        body.append(clamp)
+        window = Adw.Window(
+            title=_("Binaural sound"),
+            transient_for=self,
+            modal=True,
+            hide_on_close=True,
+            destroy_with_parent=True,
+            resizable=False,
+        )
+        window.set_content(body)
+        return window
+
+    def _show_sound_window(self) -> None:
+        self.sound_window.present()
+
+    @staticmethod
+    def _whole_scale(low: int, high: int, step: int, page: int) -> Gtk.Scale:
+        """A slider of whole numbers from *low* to *high*, the value on its left; the arrow keys
+        move it by *step*, Page Up and Page Down by *page*."""
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, low, high, 1)
+        scale.set_digits(0)
+        scale.set_round_digits(0)
+        scale.set_increments(step, page)
+        scale.set_draw_value(True)
+        scale.set_value_pos(Gtk.PositionType.LEFT)
+        scale.set_size_request(DURATION_SCALE_WIDTH, -1)
+        scale.set_valign(Gtk.Align.CENTER)
+        return scale
+
     @staticmethod
     def _with_unit(widget: Gtk.Widget, unit: str) -> Gtk.Box:
         box = Gtk.Box(spacing=ROW_SPACING, valign=Gtk.Align.CENTER)
@@ -430,6 +528,12 @@ class PreferencesWindow(Adw.ApplicationWindow):
                 TRANSITION_CHOICES.index(self._draft.value(KEY_TRANSITIONS))
             )
             self.duration_scale.set_value(self._draft.value(KEY_TRANSITION_DURATION))
+            self.sound_switch.set_property("active", self._draft.value(KEY_BINAURAL_ENABLED))
+            self.volume_scale.set_value(self._draft.value(KEY_BINAURAL_VOLUME))
+            self.beat_drop.set_selected(
+                CHOICES[KEY_BINAURAL_BEAT].index(self._draft.value(KEY_BINAURAL_BEAT))
+            )
+            self.carrier_scale.set_value(self._draft.value(KEY_BINAURAL_CARRIER_HZ))
         finally:
             self._updating = False
 
@@ -528,8 +632,7 @@ class PreferencesWindow(Adw.ApplicationWindow):
     def _on_choice(self, key: str) -> None:
         if self._updating:
             return
-        drop = self.order_drop if key == KEY_ORDER else self.scaling_drop
-        index = drop.get_selected()
+        index = getattr(self, _DROP_ATTRIBUTES[key]).get_selected()
         if 0 <= index < len(CHOICES[key]):
             self._report(self._draft.edit_choice(key, CHOICES[key][index]))
 
@@ -543,6 +646,16 @@ class PreferencesWindow(Adw.ApplicationWindow):
     def _on_pan(self) -> None:
         if not self._updating:
             self._report(self._draft.edit_pan_portrait_images(self.pan_switch.get_active()))
+
+    def _on_sound(self) -> None:
+        if not self._updating:
+            self._report(self._draft.edit_binaural_enabled(self.sound_switch.get_active()))
+
+    def _on_sound_level(self, key: str) -> None:
+        if self._updating:
+            return
+        scale = self.volume_scale if key == KEY_BINAURAL_VOLUME else self.carrier_scale
+        self._report(self._draft.edit_binaural_level(key, int(round(scale.get_value()))))
 
     def _on_screenshots(self) -> None:
         if not self._updating:

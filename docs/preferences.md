@@ -1,6 +1,6 @@
 # UI-1: the settings window
 
-A GTK 4 and libadwaita window for the settings, in titled groups of rows (Pictures, Transitions, Start the slideshow, Timing), with the Preview and Donate buttons at the bottom and, small and faint at the bottom right, the program's version and its maker ("<version> by TrenSoft"). The header bar has the window controls only. Every change is saved the moment it is made: there is no Save button. The groups sit in two columns and nothing scrolls: the whole window shows at its natural size, about 1100 x 680 pixels, which fits a 1366 x 768 screen (`tools/wayland-smoke/smoke_preferences.py` measures it with `--monitors 1366x768,...`). The version is not written anywhere in the code: `slideshow_lock.version` reads it from the `pyproject.toml` beside the package (a source checkout) or from the installed package's metadata (an install, where the RPM builds the package from that same file); with neither it shows `dev`. Run it from a source checkout:
+A GTK 4 and libadwaita window for the settings, in titled groups of rows (Pictures, Transitions, Start the slideshow, Timing; the binaural sound is a row in Start the slideshow), with the Preview and Donate buttons at the bottom and, small and faint at the bottom right, the program's version and its maker ("<version> by TrenSoft"). The header bar has the window controls only. Every change is saved the moment it is made: there is no Save button. The groups sit in two columns and nothing scrolls: the whole window shows at its natural size, about 1100 x 680 pixels, which fits a 1366 x 768 screen (`tools/wayland-smoke/smoke_preferences.py` measures it with `--monitors 1366x768,...`). The version is not written anywhere in the code: `slideshow_lock.version` reads it from the `pyproject.toml` beside the package (a source checkout) or from the installed package's metadata (an install, where the RPM builds the package from that same file); with neither it shows `dev`. Run it from a source checkout:
 
 ```
 glib-compile-schemas data/
@@ -25,6 +25,17 @@ The window has one option, `--debug` (`./run.sh settings --debug`, `slideshow-lo
 | Show screenshots | `show-screenshots` | on, off (off by default): off leaves screenshots out of the slideshow by their names, as a convenience and not a privacy control (a renamed screenshot, or a link of another name to a screenshot folder, is shown), see `docs/image-source.md`, "Screenshots" |
 | Between pictures (drop-down, in the Transitions group) | `transitions`, `transition-order` | none (an empty list); one of the ten: cross-fade (`crossfade`), fade through black (`fade-black`), slide in (`slide-in`), push (`push`), Ken Burns (`ken-burns`, the default), zoom (`zoom`), wipe (`wipe`), circle reveal (`circle`), blur (`blur`), rotate (`rotate`); or the random mix (see below) |
 | Transition length (slider with the value on its left, in the Transitions group) | `transition-duration` | 0.2 to 5.0 seconds, in steps of 0.1 (1.0 by default); the same for every transition |
+| Binaural sound (switch, in the Start the slideshow group) | `binaural-enabled` | on, off (off by default) |
+| Volume (slider, in the sound window) | `binaural-volume` | 0 to 100 percent (30 by default) |
+| Beat (drop-down, in the sound window) | `binaural-beat` | delta (4 Hz), theta (6 Hz), alpha (10 Hz, the default), beta (14 Hz) |
+| Carrier tone (slider, in the sound window) | `binaural-carrier-hz` | 100 to 500 Hz, whole numbers (200 by default) |
+
+The binaural sound (`docs/binaural.md`) is one row in the Start the slideshow group: its switch, and the
+"Adjust..." button, which opens a small window with the volume, the beat and the carrier tone. The
+window is not a group of its own because the two columns already fill a 1366 x 768 screen (the
+natural size stays about 1100 x 680; `smoke_preferences.py` measures it). The small window is modal
+over the settings window, hidden (not destroyed) when it is closed, and goes with its parent; its
+fields are kept current like the others. Every change is saved at once, as everywhere in the window.
 
 "Preview" runs the CORE-2 preview (`preview_app.start_preview`) on the values in the window, which
 are the stored ones (see "Saved at once" below), in the same process. It never locks (D11); any key, click, scroll or mouse movement ends it, and

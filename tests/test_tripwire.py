@@ -87,7 +87,7 @@ OPT_OUTS = {
     ("test_run_script.py", "test_check_without_python3_says_so"),
     (
         "test_settings.py",
-        "test_a_boolean_key_the_schema_lacks_gives_its_default_and_does_not_abort",
+        "test_a_key_the_schema_lacks_gives_its_default_and_does_not_abort",
     ),
     ("test_settings.py", "test_a_changed_default_reaches_only_the_keys_the_user_never_set"),
     ("test_run_script.py", "test_check_fails_without_a_wayland_session"),

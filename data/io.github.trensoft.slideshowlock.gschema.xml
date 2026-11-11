@@ -175,5 +175,51 @@
       </description>
     </key>
 
+    <key name="binaural-enabled" type="b">
+      <default>false</default>
+      <summary>Play binaural sound during the slideshow</summary>
+      <description>
+        When true, two sine tones play while the slideshow shows and in the preview: the carrier
+        in the left channel and the carrier plus the beat in the right one. The sound fades in over
+        1.5 seconds when the slideshow starts and fades out over 1.5 seconds when it ends. It is
+        off by default. A sound that cannot be played (no sound device, a GStreamer element
+        missing) is logged once and the slideshow goes on without it.
+      </description>
+    </key>
+
+    <key name="binaural-volume" type="u">
+      <range min="0" max="100"/>
+      <default>30</default>
+      <summary>Binaural sound volume</summary>
+      <description>
+        The level the sound fades in to, in percent of full scale (0 to 100). The default is 30.
+      </description>
+    </key>
+
+    <key name="binaural-beat" type="s">
+      <choices>
+        <choice value="delta"/>
+        <choice value="theta"/>
+        <choice value="alpha"/>
+        <choice value="beta"/>
+      </choices>
+      <default>'alpha'</default>
+      <summary>Binaural beat</summary>
+      <description>
+        The difference between the two tones, as a preset: delta 4 Hz, theta 6 Hz, alpha 10 Hz or
+        beta 14 Hz. The right channel plays the carrier plus this beat. The default is alpha.
+      </description>
+    </key>
+
+    <key name="binaural-carrier-hz" type="u">
+      <range min="100" max="500"/>
+      <default>200</default>
+      <summary>Binaural carrier tone</summary>
+      <description>
+        The frequency of the left channel, in Hz (100 to 500). The right channel plays this plus
+        the beat. The default is 200 Hz.
+      </description>
+    </key>
+
   </schema>
 </schemalist>
