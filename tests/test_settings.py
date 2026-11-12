@@ -527,6 +527,40 @@ def test_get_picture_folder_no_warning_when_folder_exists(tmp_path, caplog):
     assert not any("[slideshow-dir]" in record.message for record in caplog.records)
 
 
+def test_a_missing_folder_is_warned_about_once_per_path_not_at_every_read(tmp_path, caplog):
+    """The settings window reads the folder at every refresh: the same missing path is one warning.
+    Another missing path is news, and so is the same path when it went missing again."""
+    settings = Settings()
+    first, second = tmp_path / "first", tmp_path / "second"
+
+    def warnings():
+        return [r.message for r in caplog.records if "[slideshow-dir]" in r.message]
+
+    with caplog.at_level(logging.WARNING, logger="slideshow_lock.settings"):
+        settings.set_picture_folder(str(first))
+        for _read in range(5):
+            assert settings.get_picture_folder() == str(first)  # still returned at every read
+        assert len(warnings()) == 1 and str(first) in warnings()[0]
+
+        settings.set_picture_folder(str(second))
+        settings.get_picture_folder()
+        settings.get_picture_folder()
+        assert len(warnings()) == 2 and str(second) in warnings()[1]
+
+        second.mkdir()
+        settings.get_picture_folder()
+        assert len(warnings()) == 2
+        second.rmdir()
+        settings.get_picture_folder()
+        assert len(warnings()) == 3 and str(second) in warnings()[2]
+
+    # one Settings object's memory is its own: another one warns about the same path
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="slideshow_lock.settings"):
+        Settings().get_picture_folder()
+    assert len(warnings()) == 1
+
+
 # -- first-run-done and the user's own picture folder (the login start of ``control``) -------------
 
 

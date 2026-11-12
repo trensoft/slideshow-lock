@@ -236,14 +236,20 @@ def start_preview(
     controller.connect_stopped(lambda _reason: _cancel(limit))  # no shot at a stopped preview
     sound = SlideshowSound(settings)  # plays only if the settings ask for it
     controller.connect_stopped(lambda _reason: _fade_out(sound, clock, application))
-    controller.start()
-    if controller.running:
-        limit["cancel"] = clock.call_later(
-            PREVIEW_LIMIT_SECONDS, lambda: controller.stop("time limit")
-        )
-        sound.start()
-    if hold is not None and controller.running:  # no monitor: nothing shows, nothing to hold
-        hold.take(shown_on[0])
+    try:
+        controller.start()
+        if controller.running:
+            limit["cancel"] = clock.call_later(
+                PREVIEW_LIMIT_SECONDS, lambda: controller.stop("time limit")
+            )
+            sound.start()
+        if hold is not None and controller.running:  # no monitor: nothing shows, nothing to hold
+            hold.take(shown_on[0])
+    except Exception:
+        # The windows may be open already, and the caller gets no controller to close them with:
+        # the stop closes them and gives back what the stop listeners above give back.
+        controller.stop("start failed")
+        raise
     return controller
 
 

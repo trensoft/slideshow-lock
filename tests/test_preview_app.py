@@ -483,6 +483,39 @@ def test_a_start_that_fails_asks_for_nothing(tmp_path, monkeypatch):
     assert application.inhibit_calls == []
 
 
+@pytest.mark.parametrize("failing", ["controller start", "limit timer"])
+def test_a_start_that_fails_after_the_windows_opened_closes_them(tmp_path, monkeypatch, failing):
+    """The caller gets no controller to stop, so the windows are closed before the error goes on,
+    and what the stop gives back is given back: the worker thread and every timer."""
+    closed = []
+
+    class Recording(ThreadWorker):
+        def close(self):
+            closed.append(True)
+            super().close()
+
+    class BrokenWindow(FakeWindow):
+        def connect_size_changed(self, callback):
+            raise RuntimeError("no size signal")
+
+    class BrokenLimitClock(FakeClock):
+        def call_later(self, delay, fn):
+            if delay == PREVIEW_LIMIT_SECONDS:
+                raise RuntimeError("no timer")
+            return super().call_later(delay, fn)
+
+    windows = [FakeWindow(), BrokenWindow() if failing == "controller start" else FakeWindow()]
+    clock = BrokenLimitClock() if failing == "limit timer" else FakeClock()
+    application = FakeApplication()
+    monkeypatch.setattr(preview_app, "ThreadWorker", Recording)
+    with pytest.raises(RuntimeError):
+        preview_with(tmp_path, monkeypatch, application, windows=windows, clock=clock)
+    assert [window.closed for window in windows] == [1, 1]
+    assert closed == [True]
+    assert clock.pending == 0  # no size wait or limit left to go off on closed windows
+    assert application.held == 0
+
+
 def test_without_an_application_the_preview_asks_for_nothing_and_still_runs(
     tmp_path, monkeypatch, caplog
 ):

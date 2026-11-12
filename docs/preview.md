@@ -458,7 +458,9 @@ the time limit of two minutes (section 2.1).
 `start_preview(settings, source, application=None)` in the same module is what the settings window
 calls (see `docs/preferences.md`); the service has its own controller wiring. Give it the
 `Gtk.Application` and the preview also keeps the desktop's idle delay from blanking the screen
-(section 2.1).
+(section 2.1). If it raises once the windows may be open (in the controller's start, or while it
+sets the time limit), it stops the controller before the error goes on, so the windows close and
+the worker thread and the timers are given back: the caller gets no controller to do it with.
 
 ## 7. Facts measured while building it
 
