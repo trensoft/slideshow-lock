@@ -122,8 +122,8 @@ signal** — the machine sleeps unlocked, silently. Consequences for the design:
 
 ### 3.7 Enabling/disabling the unit
 
-"Turn the service on/off" is not the RPM post-install script's (it runs as root and cannot
-enable a user's unit): it is the preferences app's toggle. That toggle needs a real mechanism:
+"Turn the service on/off" is not the package's (it enables nothing and ships no preset, see
+`docs/service.md`): it is the preferences app's toggle. That toggle needs a real mechanism:
 
 - Interface: `org.freedesktop.systemd1` (user service manager bus), methods
   `EnableUnitFiles`/`DisableUnitFiles`, `StartUnit`/`StopUnit`.

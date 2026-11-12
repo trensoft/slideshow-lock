@@ -5,8 +5,9 @@
 
 The application itself lives in the modules next to this one (state machine, D-Bus layer,
 settings, GTK slideshow and settings window); this module holds what they share. Every string
-shown to a user must go through ``_()`` so gettext can extract it (CI checks that the extracted
-template is not empty).
+shown to a user must go through ``_()`` so gettext can extract it (CI's ``tools/i18n.sh check``
+compares the extracted template with the strings the source passes to ``_()``: exactly those, each
+a plain literal, none called at import).
 
 ``APP_ID`` is the single-source application identity constant (no name of its own anywhere): the
 `.desktop` file name, the GSettings schema id, the RPM package name, the

@@ -3,6 +3,8 @@
 The logic is tested directly (callbacks delivered in line); the thread is tested with real GLib
 loops: ``GuardThread`` for the guard and a ``LoopThread`` standing in for the main loop, which
 a test can block the way a stuck network mount blocks the image source.
+
+``d28`` in a test name: an idle inhibitor never keeps the sleep lock back.
 """
 
 from __future__ import annotations
