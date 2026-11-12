@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The contract between the state machine and the desktop session (CORE-1, ARCH-1 section 2).
+"""The contract between the state machine and the desktop session (section 2 of
+``docs/architecture/dbus-state-machine.md``).
 
 Every D-Bus interaction is a small ``Protocol`` here. The state machine and the sleep guard
 depend on these and on nothing else: no ``Gio``, no ``GLib``, no bus name appears in
@@ -10,7 +11,7 @@ real adapters of ``dbus_adapters.py`` and the fakes of the tests (``tests/fakes.
 a test inject every event without a bus.
 
 Threads. The sleep path and the idle path live on different threads on purpose (the security
-condition of CORE-1: a picture folder on a stuck network mount can block the main loop for
+condition of the service: a picture folder on a stuck network mount can block the main loop for
 minutes, and the lock before suspend must not wait for it):
 
 * ``IdleWatcher``, ``InhibitionQuery`` and the state machine's own ``SessionLock`` belong to the
@@ -36,7 +37,7 @@ Cancel = Callable[[], None]
 
 
 class UnsupportedSessionInterface(RuntimeError):
-    """A D-Bus interface the service needs is not on this session (ARCH-1 section 7).
+    """A D-Bus interface the service needs is not on this session (section 7 of the design).
 
     Raised at startup by the capability probe, with the name of what is missing, so the service
     can say so at ERROR level and refuse to run silently degraded."""
@@ -120,7 +121,8 @@ class DelayInhibitor(Protocol):
 
 
 class SleepSignal(Protocol):
-    """logind's suspend notification and the delay inhibitor that makes it useful (D1, D32)."""
+    """logind's suspend notification and the delay inhibitor that makes it useful (suspend
+    waits for the lock, up to logind's ``InhibitDelayMaxSec``)."""
 
     def on_prepare_for_sleep(self, callback: Callable[[bool], None]) -> None:
         """Call *callback(going_to_sleep)* for ``PrepareForSleep``: True before, False after."""
@@ -164,7 +166,7 @@ class OverviewControl(Protocol):
 
 
 class SleepGuardControl(Protocol):
-    """The sleep guard as the state machine sees it: on or off (D4, the preferences toggle)."""
+    """The sleep guard as the state machine sees it: on or off (the settings window's toggle)."""
 
     def start(self) -> None:
         """Subscribe and take the delay inhibitor. Raises ``UnsupportedSessionInterface`` or

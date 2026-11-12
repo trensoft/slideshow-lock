@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Slideshow preview controller (CORE-2): one fullscreen window per monitor.
+"""Slideshow preview controller: one fullscreen window per monitor.
 
 The controller decides *what* is shown *when*. It draws nothing, imports no GTK and has
-no lock, session or D-Bus call of any kind: a preview never locks (D11), by construction
+no lock, session or D-Bus call of any kind: a preview never locks, by construction
 and not by a runtime check, and the tests prove it (``tests/test_preview.py``). The
 windows, the scaler, the clock and the worker thread are handed in, so the whole control
 flow runs under test without a display.
@@ -22,7 +22,7 @@ What it does:
   (``os.path.isdir``, ``os.path.isfile``), ``probe_image`` (the header read of each new
   file), ``gio_directory_watcher`` (creating a folder monitor) and ``_kernel_watch_inodes``
   (reading ``/proc/self/fd``). A hung network mount can therefore still stall the main loop
-  through the image source. CORE-1 does not move that off the loop: it keeps the lock before
+  through the image source. The service does not move that off the loop: it keeps the lock before
   suspend off it (``sleep_guard.py``, ``docs/service.md``), so a stuck folder can delay a
   picture and the slideshow's own stop, never the lock (``docs/preview.md``, section 4, has the
   same list).

@@ -1,4 +1,4 @@
-"""Shared fixtures for the CORE-3 settings tests.
+"""Shared fixtures for the settings tests.
 
 These tests exercise a real `Gio.Settings` object against the project's own
 gschema, compiled into a throwaway directory for the duration of the test
@@ -39,7 +39,7 @@ _GSCHEMA_COMPILER = shutil.which("glib-compile-schemas")
 if _GSCHEMA_COMPILER is None:
     pytest.skip(
         "glib-compile-schemas is not on PATH; install libglib2.0-bin (Debian/Ubuntu) or "
-        "glib2 (Fedora/RHEL) to run the CORE-3 settings tests",
+        "glib2 (Fedora/RHEL) to run the settings tests",
         allow_module_level=True,
     )
 
@@ -131,7 +131,7 @@ def _reset_gsettings_between_tests():
 
 
 #: Python-level ways to start a program or to reach a bus. The slideshow preview never locks
-#: (D11): no test, and so no code a test runs, has any reason to call one of them. A call
+#: on any input: no test, and so no code a test runs, has any reason to call one of them. A call
 #: raises, so the line that makes it is the failure. Complements the scan of the sources
 #: (``test_preview.py``): this catches a call the names of which the scan cannot see (built
 #: from pieces, looked up at runtime) but only where a test runs it. A call that sits in a

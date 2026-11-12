@@ -14,7 +14,7 @@ one process that is supervised and logged under its own name. Nothing is enabled
 installed: the unit is not started at login by systemd, the autostart entry of the package starts
 it through this command.
 
-The window and the preview code may not name the session or the bus (D11,
+The window and the preview code may not name the session or the bus (a preview never locks,
 ``tests/test_preview.py``), so the start of the service is here, on the lock side of that line, and
 the window is the one of ``settings_app`` (``slideshow-lock settings``), called after it in the same
 process.

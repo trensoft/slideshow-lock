@@ -1,11 +1,12 @@
-"""Tests for the CORE-4 image source: walk, symlink-loop guard, live changes.
+"""Tests for the image source: walk, symlink-loop guard, live changes.
 
 These tests drive the real filesystem (under ``tmp_path`` only) but use a fake
 monitor backend and a manual scheduler, so every step is deterministic and no
 GLib main loop is needed. The real ``Gio.FileMonitor`` and GLib scheduler are
 covered by ``tests/test_image_source_gio.py``.
 
-Each test name carries the CORE-4 acceptance criterion it proves.
+A test name that starts with ``criterionN`` proves the image source's acceptance criterion N; the
+rest of the name says what that asks.
 """
 
 from __future__ import annotations
@@ -280,7 +281,7 @@ def test_criterion2_measurement_report(large_tree_walk, capsys):
     w = large_tree_walk
     with capsys.disabled():
         print(
-            f"\n[CORE-4 measurement] {w.total} files in 420 folders, step budget "
+            f"\n[image source measurement] {w.total} files in 420 folders, step budget "
             f"{w.budget * 1000:.0f} ms: first image found after {w.first_found * 1000:.2f} ms, "
             f"main loop regains control with it after {w.first_returned * 1000:.2f} ms "
             f"(step {w.steps_to_first}), full walk {w.full * 1000:.1f} ms in {w.steps} steps, "

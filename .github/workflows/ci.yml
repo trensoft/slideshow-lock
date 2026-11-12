@@ -48,7 +48,7 @@ jobs:
 
       - name: Verify GI stack is actually usable (anti-silent-skip gate)
         run: |
-          # CORE-3's tests/conftest.py intentionally SKIPS (not fails) the
+          # tests/conftest.py intentionally SKIPS (not fails) the
           # GSettings test module when PyGObject or glib-compile-schemas are
           # missing, since that is a legitimate state on a contributor's own
           # machine. In CI we control the image, so that condition must never
@@ -58,12 +58,12 @@ jobs:
           # job green".
           python3 -c "import gi; gi.require_version('GLib', '2.0'); from gi.repository import GLib; print('gi import OK:', gi.__version__)"
           glib-compile-schemas --version
-          # CORE-2: the scaling tests decode with GdkPixbuf and scale with GStreamer's
+          # Preview: the scaling tests decode with GdkPixbuf and scale with GStreamer's
           # videoscale. Without these typelibs tests/test_scaling_gdk.py skips its whole
           # module, so a missing package must fail here, loudly, instead.
           python3 -c "import gi; gi.require_version('GdkPixbuf', '2.0'); from gi.repository import GdkPixbuf; print('GdkPixbuf OK:', GdkPixbuf.PIXBUF_VERSION)"
           python3 -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None); assert Gst.ElementFactory.find('videoscale'), 'videoscale element missing'; print('GStreamer OK:', Gst.version_string())"
-          # CORE-2: tests/test_preview_app.py imports slideshow_lock.preview_app, which needs the
+          # Preview: tests/test_preview_app.py imports slideshow_lock.preview_app, which needs the
           # GTK 4 typelibs (no display is opened). Without them the module fails at import, or
           # would be skipped by an importorskip and caught only by the no-skip gate: a missing
           # package is named here, up front, instead.
@@ -73,7 +73,7 @@ jobs:
           # libadwaita on Fedora and EL10). A missing package is named here, up front, not found as an
           # ImportError or ValueError in the middle of the pytest run.
           python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1'); from gi.repository import Adw; print('Adw OK:', Adw.get_major_version(), Adw.get_minor_version(), Adw.get_micro_version())"
-          # CORE-1: tests/test_dbus_adapters.py and tests/test_service_dbus.py start private
+          # Service: tests/test_dbus_adapters.py and tests/test_service_dbus.py start private
           # dbus-daemon processes (a fake desktop). Locally they skip without the daemon; in CI a
           # missing daemon must be named here, up front.
           dbus-daemon --version | head -1
@@ -121,7 +121,7 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Translations (D26) - catalogs, template, strings
+      - name: Translations - catalogs, template, strings
         # po/LINGUAS and the po/*.po agree, every catalog passes msgfmt -c --check-format, and the
         # template xgettext makes holds exactly the strings that the source passes to _() (each
         # one a plain literal, none evaluated at import): the count is compared, not "at least 1".

@@ -236,7 +236,7 @@ def test_the_queue_running_empty_is_not_ready():
 
 
 def test_an_idle_event_before_the_first_picture_starts_the_slideshow_when_the_scan_finds_one():
-    """The real class and the state machine together (the card: idle before the scan's first
+    """The real class and the state machine together (idle before the scan's first
     picture)."""
     source = FakeSource(current=None, scan_complete=False)
     slideshow, controller, _ = make_slideshow(source)

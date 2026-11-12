@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,7 +28,10 @@ from pathlib import Path
 import pytest
 
 from tests.start_gate_helpers import GATE, REPO, stub
-from tests.timeout_guard import per_test_deadline  # noqa: F401  (autouse fixture)
+from tests.timeout_guard import (
+    PER_TEST_DEADLINE_SECONDS,
+    per_test_deadline,  # noqa: F401  (autouse fixture)
+)
 
 pytestmark = pytest.mark.spawns_processes
 
@@ -185,10 +189,26 @@ def test_step_b_names_both_modules_when_all_is_well(installed, monkeypatch):
 # prints the line that ``main()`` prints for it.
 DRIVER = textwrap.dedent(
     """
-    import importlib.util, signal, sys, warnings
+    import importlib.util, signal, sys, time, warnings
+    started_at = time.monotonic()
+    def phase(name):
+        gone = time.monotonic() - started_at
+        print("phase %s +%.2fs" % (name, gone), file=sys.stderr, flush=True)
     sys.path.insert(0, {repo!r})
     from slideshow_lock import loop
+    from gi.repository import GLib
     mode = sys.argv[1]
+    phase("imports done")
+    class TracedLoop(GLib.MainLoop):
+        def run(self):
+            phase("loop starts")
+            if mode == "stall":
+                time.sleep(3600)
+            try:
+                super().run()
+            finally:
+                phase("loop ends")
+    GLib.MainLoop = TracedLoop
     real = loop.unix_signal_add
     if mode == "attribute-error":
         def broken(*args, **kwargs):
@@ -197,7 +217,6 @@ DRIVER = textwrap.dedent(
     elif mode == "zero":
         loop.unix_signal_add = lambda *args, **kwargs: 0
     elif mode in ("term-only", "int-only"):
-        from gi.repository import GLib
         keep = signal.SIGTERM if mode == "term-only" else signal.SIGINT
         def swallow(prio, signum, cb):
             return real(prio, signum, cb if signum == keep else (lambda: GLib.SOURCE_REMOVE))
@@ -215,7 +234,6 @@ DRIVER = textwrap.dedent(
     spec = importlib.util.spec_from_file_location("probe", {probe!r})
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)
-    import time
     started = time.monotonic()
     try:
         print("START-GATE c PASS", probe.step_signal())
@@ -232,17 +250,75 @@ def _took(result):
     return float(result.stdout.rsplit("took ", 1)[1].split()[0])
 
 
+#: Seconds the child of the signal step gets. It is shorter than the 60 s of the per-test deadline
+#: (``timeout_guard``), so that this branch runs first, looks at the child and reports it; the
+#: alarm of the deadline would only name the line of ``communicate()``.
+CHILD_TIMEOUT = 30
+#: Seconds the child gets to be reaped after the kill (a child in the ``D`` state is not). Both
+#: together stay below the per-test deadline (a test pins that).
+REAP_TIMEOUT = 15
+
+
+def _child_state(pid):
+    """What the kernel says about a child that is still running: the ``State`` line (``S`` sleeping,
+    ``R`` running, ``D`` uninterruptible, ``T`` stopped), the kernel function it waits in and the
+    system call it is in. Read before the kill: the kill changes all three."""
+    lines = []
+    for name in ("status", "wchan", "syscall"):
+        try:
+            text = Path(f"/proc/{pid}/{name}").read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            text = f"unreadable ({exc.__class__.__name__}: {exc})"
+        if name == "status":
+            lines.append(next((ln for ln in text.splitlines() if ln.startswith("State:")), text))
+        else:
+            lines.append(f"{name}: {text}")
+    return "\n".join(lines)
+
+
+def _text(output):
+    """The output of a child as text. ``TimeoutExpired`` carries it as bytes (or ``None``)."""
+    if output is None:
+        return ""
+    return output.decode("utf-8", "replace") if isinstance(output, bytes) else output
+
+
 def _signal_step(mode):
     pytest.importorskip("gi")
     started = time.monotonic()
-    result = subprocess.run(
+    child = subprocess.Popen(
         [sys.executable, "-W", "ignore::ResourceWarning", "-c", DRIVER, mode],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=60,
-        check=False,
         env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"},
     )
+    try:
+        stdout, stderr = child.communicate(timeout=CHILD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        state = _child_state(child.pid)
+        killed = time.monotonic()
+        child.kill()
+        try:
+            stdout, stderr = child.communicate(timeout=REAP_TIMEOUT)
+            reaped = f"{time.monotonic() - killed:.2f} s"
+        except subprocess.TimeoutExpired as late:
+            # what the child wrote before is kept by ``communicate()`` and comes with the error
+            stdout, stderr = _text(late.stdout), _text(late.stderr)
+            reaped = f"not reaped in {REAP_TIMEOUT} s (a child in the D state?)"
+        pytest.fail(
+            f"the child of the signal step (mode {mode}) was still running after "
+            f"{CHILD_TIMEOUT} s\n{state}\nkill -> reap: {reaped}\n"
+            f"stderr (the phases): {stderr!r}\nstdout: {stdout!r}"
+        )
+    finally:
+        # a hard timeout or a Ctrl-C must not leave a child that sleeps for an hour behind; no
+        # ``wait()``: a child in the D state would hold the test here
+        if child.poll() is None:
+            child.kill()
+        child.stdout.close()
+        child.stderr.close()
+    result = subprocess.CompletedProcess(child.args, child.returncode, stdout, stderr)
     return result, time.monotonic() - started
 
 
@@ -253,6 +329,69 @@ def test_step_c_passes_with_the_call_of_the_tree_and_both_signals_arrive():
     assert "warnings []" in result.stdout
     # the main loop ends when the second signal has come, not at its time limit of 5 s
     assert _took(result) < 3, f"both signals arrive within 0.4 s: {result.stdout}"
+
+
+def test_the_deadlines_of_the_child_end_before_the_per_test_deadline():
+    """If they did not, the alarm of the test would fire first and the report would be lost."""
+    assert CHILD_TIMEOUT + REAP_TIMEOUT < PER_TEST_DEADLINE_SECONDS
+
+
+def test_step_c_says_which_phase_the_child_has_reached():
+    result, _ = _signal_step("intact")
+    phases = [ln.split(" +")[0] for ln in result.stderr.splitlines() if ln.startswith("phase ")]
+    assert phases == ["phase imports done", "phase loop starts", "phase loop ends"], result.stderr
+
+
+def test_a_child_that_does_not_end_is_reported_with_its_state_and_its_phase(monkeypatch):
+    """The 60 s hang of the step (a run of the whole suite, 2026-11-12) left only the line of
+    ``communicate()``. A child that sleeps in its main loop (mode ``stall``) is reported by the
+    branch of the timeout with the kernel state, the phase it reached and the time of the reap."""
+    monkeypatch.setattr(sys.modules[__name__], "CHILD_TIMEOUT", 2)
+    with pytest.raises(pytest.fail.Exception) as raised:
+        _signal_step("stall")
+    message = str(raised.value)
+    assert "was still running after 2 s" in message
+    assert re.search(r"^State:\s+S \(sleeping\)$", message, re.M), message
+    assert "wchan: " in message and "syscall: " in message
+    assert "phase loop starts" in message and "phase loop ends" not in message
+    assert re.search(r"kill -> reap: \d+\.\d\d s", message), message
+
+
+def test_a_child_that_is_not_reaped_still_reports_its_phases(monkeypatch):
+    """A child that the kill does not end (the ``D`` state) is the case the reap time is for. A
+    reap deadline that is over at once stands in for it: the phases the child wrote before are
+    still in the message (they come with the second ``TimeoutExpired``)."""
+    monkeypatch.setattr(sys.modules[__name__], "CHILD_TIMEOUT", 2)
+    monkeypatch.setattr(sys.modules[__name__], "REAP_TIMEOUT", -1)
+    with pytest.raises(pytest.fail.Exception) as raised:
+        _signal_step("stall")
+    message = str(raised.value)
+    assert "kill -> reap: not reaped in -1 s" in message, message
+    assert "phase imports done" in message and "phase loop starts" in message, message
+
+
+def test_the_child_is_killed_when_the_wait_for_it_is_cut_short(monkeypatch):
+    """A hard timeout of the test (or a Ctrl-C) must not leave the child, which sleeps for an
+    hour in mode ``stall``, behind."""
+
+    class Cut(BaseException):
+        pass
+
+    seen = []
+
+    def cut(self, *args, **kwargs):
+        seen.append(self)
+        raise Cut
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", cut)
+    try:
+        with pytest.raises(Cut):
+            _signal_step("stall")
+        assert seen[0].wait(timeout=10) == -9, "the child was not killed"
+    finally:
+        if seen and seen[0].poll() is None:
+            seen[0].kill()
+            seen[0].wait()
 
 
 def test_step_c_fails_when_the_call_raises_the_error_of_1_0_11():

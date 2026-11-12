@@ -1,4 +1,4 @@
-"""CORE-4 image source against the real ``Gio.FileMonitor`` and the GLib main loop.
+"""The image source against the real ``Gio.FileMonitor`` and the GLib main loop.
 
 ``tests/test_image_source.py`` proves the logic with fake backends. This module
 proves the same behaviour end to end: real files created, moved and deleted
@@ -222,7 +222,7 @@ def test_gio_criterion2_first_image_arrives_long_before_the_full_walk_on_a_large
     t_first = found_at[0] - t0
     with capsys.disabled():
         print(
-            f"\n[CORE-4 measurement, real GLib main loop] {total} files in 420 folders, step "
+            f"\n[image source measurement, real GLib main loop] {total} files in 420 folders, step "
             f"budget 5 ms: first image after {t_first * 1000:.2f} ms (step {steps_at_first}), "
             f"full walk {t_full * 1000:.1f} ms in {stats['steps']} steps, "
             f"longest single step {stats['longest'] * 1000:.1f} ms"
@@ -384,7 +384,7 @@ def test_gio_watch_exhaustion_is_reported_once_and_the_walk_still_completes(
         assert _read_watch_limit() == original
     with capsys.disabled():
         print(
-            f"\n[CORE-4 watch exhaustion, real kernel + Gio] limit 25, {folders} folders: "
+            f"\n[image source watch exhaustion, real kernel + Gio] limit 25, {folders} folders: "
             f"walked {walked} images, {len(confirmed)} subfolders confirmed by the kernel; "
             f"late images noticed through events: {late_seen} of {folders}; "
             f"summary lines: {limit_lines}; other warnings: {other}"

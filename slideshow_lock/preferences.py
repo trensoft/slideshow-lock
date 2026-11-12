@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The settings window (UI-1): the settings in one libadwaita window, in titled groups of rows.
+"""The settings window: the settings in one libadwaita window, in titled groups of rows.
 
     glib-compile-schemas data/
     GSETTINGS_SCHEMA_DIR=data python3 -m slideshow_lock.preferences
@@ -14,11 +14,11 @@ not at every key. What the fields accept and what counts as saved is decided in
 only puts that on the screen. A refused value, or one that could not be stored, puts the field back
 to the stored value and says why; a save says "Saved." only for what read back.
 
-The "Preview" button runs the slideshow preview of CORE-2 (``preview_app.start_preview``) on the
-values in the window, which are the stored ones: nothing is left unsaved (a folder typed and not yet
-confirmed is stored first). It never locks the session (D11); any key, click, scroll or mouse
-movement ends it. There is no on/off switch here: that goes through the systemd user unit (D4),
-which is not part of this window.
+The "Preview" button runs the slideshow preview (``preview_app.start_preview``) on the values in the
+window, which are the stored ones: nothing is left unsaved (a folder typed and not yet confirmed is
+stored first). It never locks the session; any key, click, scroll or mouse movement ends it. There
+is no on/off switch here: the service is turned on and off through its systemd user unit, which is
+not part of this window.
 
 The window has no scrolled area: the groups sit in two columns and the whole window shows at its
 natural size, which fits a 1366 x 768 screen (``tools/wayland-smoke/smoke_preferences.py`` measures
@@ -521,7 +521,7 @@ class PreferencesWindow(Adw.ApplicationWindow):
             self.scaling_drop.set_selected(
                 CHOICES[KEY_SCALING].index(self._draft.value(KEY_SCALING))
             )
-            # set_property, not set_active: the D11 scan flags that name (a screensaver call too)
+            # set_property, not set_active: the no-lock scan flags that name (a screensaver call)
             self.pan_switch.set_property("active", self._draft.value(KEY_PAN_PORTRAIT_IMAGES))
             self.screenshots_switch.set_property("active", self._draft.value(KEY_SHOW_SCREENSHOTS))
             self.transition_drop.set_selected(

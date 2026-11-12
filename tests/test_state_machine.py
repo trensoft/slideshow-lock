@@ -1,9 +1,9 @@
-"""The state machine against fake adapters (CORE-1). No bus, no GLib loop, no wall clock.
+"""The state machine against fake adapters. No bus, no GLib loop, no wall clock.
 
-Each test name carries the acceptance criterion of ``docs/req-1-acceptance-criteria.md`` it
-proves (AC-3.x-n), or the decision (D5, D11, D28) it pins. What these tests cannot say is how the
-real session behaves: that is the manual test list, and the wording is "automated tests green,
-live verification pending".
+Each test name carries the acceptance criterion of ``docs/req-1-acceptance-criteria.md`` it proves
+(AC-3.x-n), or the rule it pins (``d28``: an idle inhibitor never keeps the sleep lock back). What
+these tests cannot say is how the real session behaves: that is the manual test list, and the
+wording is "automated tests green, live verification pending".
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ def test_ac_3_1_1_the_idle_timeout_starts_the_slideshow_when_nothing_stands_in_t
     assert r.state is State.SLIDESHOW_RUNNING
     assert r.machine.trigger_source is TriggerSource.IDLE
     assert r.slideshow.starts == 1
-    assert len(r.idle.active_callbacks) == 1  # input is watched through the idle monitor (D22)
+    assert len(r.idle.active_callbacks) == 1  # input is watched through the idle monitor
 
 
 def test_ac_3_1_1_a_second_idle_event_while_the_slideshow_runs_starts_nothing_more():
@@ -210,7 +210,7 @@ def test_ac_3_3_2_a_manual_preview_is_never_locked_by_input_whatever_the_grace_a
     r = Rig(grace=grace)
     assert r.machine.start_preview()
     assert r.machine.trigger_source is TriggerSource.MANUAL_PREVIEW
-    assert len(r.idle.active_callbacks) == 0  # a preview has no idle -> active transition (D22)
+    assert len(r.idle.active_callbacks) == 0  # a preview has no idle -> active transition
     r.clock.advance(elapsed)
     r.slideshow.end_by_input("input")
     assert r.lock.lock_calls == 0

@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The lock before suspend (CORE-1, ARCH-1 sections 3.5 and 3.6, decisions D1, D10, D28, D32, D34).
+"""The lock before suspend (sections 3.5 and 3.6 of ``docs/architecture/dbus-state-machine.md``).
 
 ``SleepGuard`` is the whole sleep path: it holds logind's delay inhibitor, and when
 ``PrepareForSleep(true)`` comes it locks the session and lets suspend go on. It runs on a thread
 of its own (``GuardThread``) with its own GLib main context, and that is the security condition
-of CORE-1: the slideshow's image source reads folders and file headers on the main loop, and a
+of the service: the slideshow's image source reads folders and file headers on the main loop, and a
 stuck network mount can block one such call for minutes. If the sleep handler ran on that loop,
 the lock would miss the ``InhibitDelayMaxSec`` window (5 s by default) and the machine would sleep
 unlocked, without any error. Nothing here touches the image source, the slideshow windows, the
@@ -27,10 +27,10 @@ state and never skips the call because the session looks locked already: the ans
 is not proof that a lock screen is up (on the login1 fallback it only means that a signal was
 sent, with nobody necessarily listening), and a remembered "locked" would keep every later
 suspend from being locked. The idle inhibition query is not an argument of this class and is
-never asked here (D28): an application that inhibits idle, a video call say, does not keep the
+never asked here: an application that inhibits idle, a video call say, does not keep the
 lock from being made.
 
-``PrepareForSleep(false)`` before step 3 has finished is the D34 case: the machine woke while
+``PrepareForSleep(false)`` before step 3 has finished is the early wake: the machine woke while
 the lock was still on its way, so it may have resumed unlocked. That is logged at WARNING with
 the elapsed time. The inhibitor is taken again after every sleep.
 """
@@ -109,7 +109,7 @@ class SleepGuard:
 
     def setup(self) -> None:
         """Subscribe, take the delay inhibitor, read the delay ceiling. Raises if the inhibitor
-        cannot be had: the service must not run without it (ARCH-1 section 7)."""
+        cannot be had: the service must not run without it (section 7 of the design)."""
         self._sleep.on_prepare_for_sleep(self._on_prepare_for_sleep)
         self._inhibitor = self._sleep.acquire_delay_inhibitor()
         self._running = True
