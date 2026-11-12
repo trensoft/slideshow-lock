@@ -65,17 +65,26 @@ def unix_signal_add(priority: int, signum: int, callback: Callable[[], bool]) ->
     the source, or 0 (and a warning) where this glib has no Unix signal watch at all.
 
     glib 2.79.2 moved ``GLib.unix_signal_add`` to ``GLibUnix.signal_add``, and the ``GLib`` typelib
-    of glib 2.88 no longer has the old name. The new place is used where it exists and the old one
-    where it does not (glib before 2.79.2): no deprecation warning on glib 2.88 and newer.
-    Measured (the RPMs of each root unpacked and run, 2026-11-11): on Fedora 44 and rawhide the
-    old call too works, because pygobject adds a wrapper that warns; the ubuntu-26.04 CI runner has
-    none, and there the old name is an ``AttributeError``. Without a watch the default action of the
-    signal applies: the program ends without the shutdown of the application."""
+    of glib 2.88 no longer has the old name. The new place is used where it has the call, the old
+    one where it does not. Measured (the call run in the unpacked RPM roots, 2026-11-12): the
+    ``GLibUnix`` namespace is importable on EL10 (glib 2.80) and Fedora 43 (glib 2.86) but has
+    only ``signal_add_full`` there, no ``signal_add``; the call exists from glib 2.88 (Fedora 44
+    and later). So the call itself is looked up, and an ``AttributeError`` from it counts as
+    absent. No deprecation warning on glib 2.88 and newer. Without a watch the default action of
+    the signal applies: the program ends without the shutdown of the application; a start must
+    not fail for that."""
     unix = _glib_unix()
-    if unix is not None:
-        return unix.signal_add(priority, signum, callback)
+    new = getattr(unix, "signal_add", None)
+    if new is not None:
+        try:
+            return new(priority, signum, callback)
+        except AttributeError:
+            pass
     old = getattr(GLib, "unix_signal_add", None)
-    if old is None:
-        _LOG.warning("no Unix signal watch in this glib: signal %s ends the program as is", signum)
-        return 0
-    return old(priority, signum, callback)
+    if old is not None:
+        try:
+            return old(priority, signum, callback)
+        except AttributeError:
+            pass
+    _LOG.warning("no Unix signal watch in this glib: signal %s ends the program as is", signum)
+    return 0

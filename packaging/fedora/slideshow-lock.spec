@@ -11,7 +11,7 @@
 # (rpmbuild --with tests turns it on). %%check still imports every module and validates the installed files.
 
 Name:           slideshow-lock
-Version:        1.0.11
+Version:        1.0.12
 Release:        1%{?dist}
 Summary:        Idle slideshow screensaver for GNOME on Wayland that locks on input
 License:        GPL-3.0-or-later AND CC-BY-SA-4.0
@@ -168,6 +168,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %{_datadir}/%{name}
 
 %changelog
+* Thu Nov 12 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.12-1
+- Fix the start on EL10 and Fedora 43, where GLibUnix has no signal_add: the Unix signal watch falls back to GLib.unix_signal_add
+
 * Thu Nov 12 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.11-1
 - Add an optional binaural sound: two quiet tones, the carrier (200 Hz) in the left ear and the carrier plus
   a beat (alpha, 10 Hz) in the right one, while the slideshow shows and in the preview; it fades in and out

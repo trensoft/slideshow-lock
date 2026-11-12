@@ -1,11 +1,12 @@
 """``loop.unix_signal_add``: the Unix signal watch of the two programs.
 
 ``GLib.unix_signal_add`` is gone from the ``GLib`` typelib of glib 2.88 (Fedora 44, rawhide, the
-ubuntu-26.04 runner of the CI), where ``GLibUnix.signal_add`` is the only place; Fedora 43 and EL10
-have both. On Fedora 44 and rawhide pygobject keeps the old name working with a deprecation warning
-(measured, 2026-11-11); the ubuntu-26.04 runner has no such wrapper. The helper takes the new place
-where there is one and the old one where there is not, and answers 0 with a warning where there is
-neither.
+ubuntu-26.04 runner of the CI), where ``GLibUnix.signal_add`` is the only place. EL10 (glib 2.80)
+and Fedora 43 (glib 2.86) have the ``GLibUnix`` namespace but only ``signal_add_full`` in it, no
+``signal_add`` (measured, 2026-11-12): the old name is the way there. On Fedora 44 and rawhide
+pygobject keeps the old name working with a deprecation warning (measured, 2026-11-11); the
+ubuntu-26.04 runner has no such wrapper. The helper takes the new place where it has the call and
+the old one where it has not, and answers 0 with a warning where there is neither.
 """
 
 from __future__ import annotations
@@ -60,6 +61,47 @@ def test_glib_with_no_signal_watch_at_all_warns_and_answers_zero(monkeypatch, ca
         assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 0
     assert [r.levelno for r in caplog.records] == [logging.WARNING]
     assert str(int(signal.SIGUSR1)) in caplog.records[0].getMessage()
+
+
+def test_glibunix_without_signal_add_falls_back_to_the_old_name(monkeypatch):
+    """EL10: ``GLibUnix`` imports, but has no ``signal_add``."""
+    calls = []
+    old = SimpleNamespace(unix_signal_add=lambda *args: calls.append(args) or 8)
+    monkeypatch.setattr(loop, "_glib_unix", lambda: SimpleNamespace())
+    monkeypatch.setattr(loop, "GLib", old)
+    assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 8
+    assert calls == [(0, signal.SIGUSR1, _callback)]
+
+
+def test_a_signal_add_that_raises_attribute_error_falls_back_to_the_old_name(monkeypatch):
+    def broken(*_args):
+        raise AttributeError("signal_add")
+
+    calls = []
+    old = SimpleNamespace(unix_signal_add=lambda *args: calls.append(args) or 8)
+    monkeypatch.setattr(loop, "_glib_unix", lambda: SimpleNamespace(signal_add=broken))
+    monkeypatch.setattr(loop, "GLib", old)
+    assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 8
+    assert calls == [(0, signal.SIGUSR1, _callback)]
+
+
+def test_glibunix_without_signal_add_and_no_old_name_warns_and_answers_zero(monkeypatch, caplog):
+    monkeypatch.setattr(loop, "_glib_unix", lambda: SimpleNamespace())
+    monkeypatch.setattr(loop, "GLib", SimpleNamespace())
+    with caplog.at_level(logging.WARNING, logger=loop.__name__):
+        assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 0
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
+
+
+def test_both_calls_raising_attribute_error_warns_and_answers_zero(monkeypatch, caplog):
+    def broken(*_args):
+        raise AttributeError("gone")
+
+    monkeypatch.setattr(loop, "_glib_unix", lambda: SimpleNamespace(signal_add=broken))
+    monkeypatch.setattr(loop, "GLib", SimpleNamespace(unix_signal_add=broken))
+    with caplog.at_level(logging.WARNING, logger=loop.__name__):
+        assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 0
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
 
 
 def test_a_namespace_the_typelib_lacks_is_none(monkeypatch):
