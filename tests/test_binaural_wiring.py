@@ -308,6 +308,8 @@ def test_the_lock_call_is_made_while_the_sound_still_plays_at_full_level():
     )  # half way down, and the lock was long out
     assert not rig.backend.closed
     moment.advance(FADE_SECONDS / 2)
+    assert rig.pump() == pytest.approx(binaural.TAIL_SECONDS)  # at 0, the output plays out
+    moment.advance(binaural.TAIL_SECONDS)
     assert rig.pump() is None
     assert rig.backend.closed
     assert rig.backend.volumes[-1] == pytest.approx(0.0)

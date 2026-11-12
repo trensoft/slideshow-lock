@@ -21,6 +21,7 @@ from slideshow_lock import binaural
 from slideshow_lock.binaural import (
     BEAT_PRESETS,
     FADE_SECONDS,
+    TAIL_SECONDS,
     BinauralPlayer,
     GstToneBackend,
     Tone,
@@ -182,16 +183,71 @@ def test_the_player_fades_out_over_1_5_seconds_and_then_takes_the_pipeline_down(
     rig.pump_at(0.0, origin)
     rig.pump_at(5.0, origin)
     assert rig.backend.volumes[-1] == pytest.approx(0.30)
-    assert rig.player.stop() == FADE_SECONDS
+    assert rig.player.stop() == FADE_SECONDS + TAIL_SECONDS
     stop_at = origin + 10.0
     for seconds, share in [(0.0, 1.0), (0.375, 0.75), (0.75, 0.5), (1.125, 0.25)]:
         assert rig.pump_at(10.0 + seconds, origin) == binaural.STEP_SECONDS
         assert rig.backend.volumes[-1] == pytest.approx(0.30 * share)
     assert not rig.backend.closed
-    assert rig.pump_at(11.5, origin) is None
+    assert rig.pump_at(11.5, origin) == pytest.approx(TAIL_SECONDS)
     assert rig.backend.volumes[-1] == pytest.approx(0.0)
+    assert rig.pump_at(11.5 + TAIL_SECONDS, origin) is None
     assert rig.backend.closed
     assert stop_at == pytest.approx(origin + 10.0)
+
+
+def test_after_the_fade_out_the_pipeline_plays_silence_for_its_tail_before_it_is_taken_down():
+    """Taken down at once, the sound output threw away what it still held (its buffer, 200 ms)
+    and the fade-out ended in a click at 0.022 to 0.026 of full scale (measured, pipewire-pulse):
+    it goes on at 0 until that buffer holds only silence."""
+    assert TAIL_SECONDS == 0.3  # longer than the 200 ms buffer of the sink
+    rig = Rig()
+    rig.player.start(TONE)
+    origin = rig.now
+    rig.pump_at(0.0, origin)
+    rig.player.stop()
+    rig.pump_at(1.0, origin)
+    assert rig.pump_at(2.5, origin) == pytest.approx(TAIL_SECONDS)  # the fade-out is at 0
+    assert rig.pump_at(2.6, origin) == pytest.approx(TAIL_SECONDS - 0.1)
+    assert rig.pump_at(2.79, origin) == pytest.approx(TAIL_SECONDS - 0.29)
+    assert not rig.backend.closed
+    assert rig.backend.volumes[-3:] == [0.0, 0.0, 0.0]
+    assert rig.pump_at(2.8, origin) is None
+    assert rig.backend.closed
+    assert rig.log == [("open", 200.0, 210.0), ("close",)]
+
+
+def test_a_start_in_the_tail_turns_it_up_again_and_the_next_tail_starts_over():
+    rig = Rig()
+    rig.player.start(TONE)
+    origin = rig.now
+    rig.pump_at(0.0, origin)
+    rig.player.stop()
+    rig.pump_at(1.0, origin)
+    rig.pump_at(2.5, origin)  # faded out, in the tail
+    rig.player.start(TONE)
+    assert rig.pump_at(2.7, origin) == binaural.STEP_SECONDS
+    rig.pump_at(4.2, origin)
+    assert rig.backend.volumes[-1] == pytest.approx(0.30)
+    assert len(rig.backends) == 1 and not rig.backend.closed  # the same pipeline
+    rig.player.stop()
+    rig.pump_at(5.0, origin)
+    assert rig.pump_at(6.5, origin) == pytest.approx(TAIL_SECONDS)  # a whole tail again
+    assert not rig.backend.closed
+    assert rig.pump_at(6.5 + TAIL_SECONDS, origin) is None
+    assert rig.backend.closed
+
+
+def test_close_in_the_tail_takes_the_pipeline_down_at_once():
+    rig = Rig()
+    rig.player.start(TONE)
+    origin = rig.now
+    rig.pump_at(0.0, origin)
+    rig.player.stop()
+    rig.pump_at(1.0, origin)
+    rig.pump_at(2.5, origin)
+    rig.player.close()
+    assert rig.backend.closed
 
 
 def test_a_stop_in_the_middle_of_the_fade_in_fades_out_from_where_it_is():
@@ -205,7 +261,8 @@ def test_a_stop_in_the_middle_of_the_fade_in_fades_out_from_where_it_is():
     assert rig.backend.volumes[-1] == pytest.approx(0.15)
     rig.pump_at(1.5, origin)  # half of the fade-out
     assert rig.backend.volumes[-1] == pytest.approx(0.075)
-    assert rig.pump_at(2.25, origin) is None
+    assert rig.pump_at(2.25, origin) == pytest.approx(TAIL_SECONDS)
+    assert rig.pump_at(2.25 + TAIL_SECONDS, origin) is None
     assert rig.backend.closed
 
 
@@ -470,14 +527,16 @@ def test_the_worker_thread_fades_in_and_out_on_its_own():
             super().close()
             closed.set()
 
-    player = BinauralPlayer(lambda: Backend([]), fade_seconds=0.2, step_seconds=0.01)
+    player = BinauralPlayer(
+        lambda: Backend([]), fade_seconds=0.2, tail_seconds=0.1, step_seconds=0.01
+    )
     player.start(TONE)
     assert opened.wait(5)
     deadline = time.monotonic() + 5
     while (not seen or seen[-1] < 0.30) and time.monotonic() < deadline:
         time.sleep(0.01)
     assert seen[-1] == pytest.approx(0.30)
-    assert player.stop() == 0.2
+    assert player.stop() == pytest.approx(0.3)
     assert closed.wait(5), "the pipeline was not taken down after the fade-out"
     assert seen[-1] == pytest.approx(0.0)
     assert seen.index(max(seen)) < len(seen) - 1
@@ -772,6 +831,19 @@ def test_the_tones_are_not_live_so_that_the_sink_paces_the_pipeline():
     text = pipeline_description(200.0, 210.0)
     assert text.count("is-live=false") == 2 and "is-live=true" not in text
     assert GstToneBackend()._live is False
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_the_backend_opens_the_tones_live_or_not_as_it_was_made(live):
+    """``live=True`` is only a switch for the tests, but it reaches the real tones."""
+    Gst = _gst()
+    backend = GstToneBackend(sink="fakesink sync=false", live=live)
+    backend.open(200.0, 210.0)
+    try:
+        tones = _elements(Gst, backend._pipeline, "audiotestsrc")
+        assert [tone.get_property("is-live") for tone in tones] == [live, live]
+    finally:
+        backend.close()
 
 
 def test_the_description_has_one_tone_per_side_and_one_volume():

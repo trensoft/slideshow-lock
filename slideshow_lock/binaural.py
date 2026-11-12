@@ -24,10 +24,10 @@ The sound is a side dish and never gets in the way of the slideshow or of the lo
   again. ``start`` and ``stop`` never raise.
 
 The volume ramps are linear in amplitude: 0 -> the set volume in ``FADE_SECONDS`` at the start,
-the level now -> 0 in ``FADE_SECONDS`` at the end, then the pipeline is taken down. The ramp is
-driven by ``BinauralPlayer.pump(now)``, which the worker thread calls and a test calls with a time
-of its own. The settings are read once, when the sound starts: a change while it plays is heard at
-the next start.
+the level now -> 0 in ``FADE_SECONDS`` at the end, then ``TAIL_SECONDS`` at 0, and then the
+pipeline is taken down. The ramp is driven by ``BinauralPlayer.pump(now)``, which the worker thread
+calls and a test calls with a time of its own. The settings are read once, when the sound starts: a
+change while it plays is heard at the next start.
 """
 
 from __future__ import annotations
@@ -42,6 +42,13 @@ _LOG = logging.getLogger(__name__)
 
 #: Fade in at the start and fade out at the end, seconds.
 FADE_SECONDS = 1.5
+
+#: Seconds the pipeline goes on at volume 0 after the fade-out before it is taken down, so that the
+#: sound output plays out what it still holds (its buffer, 200 ms) and holds only silence when it is
+#: thrown away. Taken down at once, as it was before, the fade-out ended in a click: measured
+#: 2026-11-12 on CentOS Stream 10 with pipewire-pulse and a null sink, the sound was cut off at
+#: 0.022 to 0.026 of full scale, a volume of 0.3.
+TAIL_SECONDS = 0.3
 
 #: How often the worker sets the volume while a ramp runs (50 Hz: a step is under 1 % of the level).
 STEP_SECONDS = 0.02
@@ -231,6 +238,7 @@ class BinauralPlayer:
         *,
         clock: Callable[[], float] = time.monotonic,
         fade_seconds: float = FADE_SECONDS,
+        tail_seconds: float = TAIL_SECONDS,
         step_seconds: float = STEP_SECONDS,
         idle_seconds: float = IDLE_SECONDS,
         start_thread: bool = True,
@@ -238,6 +246,7 @@ class BinauralPlayer:
         self._factory = backend_factory or GstToneBackend
         self._clock = clock
         self._fade = fade_seconds
+        self._tail = tail_seconds
         self._step = step_seconds
         self._idle = idle_seconds
         self._use_thread = start_thread
@@ -257,6 +266,7 @@ class BinauralPlayer:
         self._level = 0.0
         self._ramp: Optional[Tuple[float, float, float]] = None  # (started at, from, to)
         self._goal: Optional[float] = None
+        self._silent_until: Optional[float] = None  # the end of the tail at 0 after a fade-out
 
     # -- the main thread ------------------------------------------------------------------
 
@@ -274,14 +284,15 @@ class BinauralPlayer:
             self._cond.notify_all()
 
     def stop(self) -> float:
-        """Begin the fade-out. Returns at once; the number is the longest the fade-out can take
-        (0.0 when no sound was started or it failed): a program about to exit waits so long."""
+        """Begin the fade-out. Returns at once; the number is the longest the fade-out can take,
+        its tail at 0 included (0.0 when no sound was started or it failed): a program about to exit
+        waits so long."""
         with self._cond:
             wanted = self._started and not self._failed and not self._closed
             self._target = None
             self._version += 1
             self._cond.notify_all()
-        return self._fade if wanted else 0.0
+        return self._fade + self._tail if wanted else 0.0
 
     def close(self, wait: bool = True) -> None:
         """Take the pipeline down now, without a fade, and stop the worker. With *wait* it waits
@@ -355,6 +366,7 @@ class BinauralPlayer:
         if goal != self._goal:
             self._goal = goal
             self._ramp = (now, self._level, goal)
+            self._silent_until = None
         if self._ramp is not None:
             started, level_from, level_to = self._ramp
             self._level = fade_level(level_from, level_to, now - started, self._fade)
@@ -367,7 +379,11 @@ class BinauralPlayer:
             return None
         if self._ramp is not None:
             return self._step
-        if target is None:  # faded out: nothing plays any more
+        if target is None:  # faded out: the output plays out what it holds, then nothing plays
+            if self._silent_until is None:
+                self._silent_until = now + self._tail
+            if now < self._silent_until:
+                return self._silent_until - now
             self._teardown()
             return None
         return self._idle
@@ -392,6 +408,7 @@ class BinauralPlayer:
         self._level = 0.0
         self._goal = None
         self._ramp = None
+        self._silent_until = None
         _LOG.info(
             "[sound] playing (left %.1f Hz, right %.1f Hz, volume %d %%)",
             tone.left_hz,
@@ -417,6 +434,7 @@ class BinauralPlayer:
         self._level = 0.0
         self._goal = None
         self._ramp = None
+        self._silent_until = None
         if backend is not None:
             try:
                 backend.close()
