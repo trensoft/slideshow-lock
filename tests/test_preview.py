@@ -1,11 +1,12 @@
-"""Tests for the CORE-2 preview controller: order, interval, switching, skipping, input.
+"""Tests for the preview controller: order, interval, switching, skipping, input.
 
 The controller is driven without a display: fake windows, a fake clock, a manual worker and
 a fake scaler, around the real ``ImageSource`` (real files, fake monitor backend) and real
 ``Settings``-style change notifications. What the real GTK windows, the real decoder and
 the real scaler do is covered by ``tests/test_scaling*.py`` and ``tools/wayland-smoke``.
 
-Test names carry the CORE-2 acceptance criterion they prove (AC1 ... AC8).
+A test name that starts with ``acN`` proves the preview's acceptance criterion N (ac1 ... ac8); the
+rest of the name says what that asks (``ac6_d11``: a preview never locks).
 """
 
 from __future__ import annotations
@@ -1395,7 +1396,7 @@ ALLOWED_CALLS = {
 def test_ac6_d11_a_whole_preview_touches_nothing_but_the_picture_interfaces(tmp_path, backends):
     """The controller gets no session, lock or D-Bus object, and everything it does call is
     on the list of picture-and-timing methods. A preview with input, settings changes and a
-    stop included. (CORE-1 owns locking; there is no lock call in here to find.)"""
+    stop included. (The service owns locking; there is no lock call in here to find.)"""
     log = set()
     r = Rig(tmp_path, backends, ["a.png", "b.png"])
     spies = [Spy(w, log, "window") for w in r.windows]
@@ -1592,7 +1593,7 @@ def _package_file(module: str) -> str:
     return os.path.join(os.path.dirname(preview_module.__file__), module)
 
 
-#: The modules that may use the word ``lock`` on purpose: the service (CORE-1) locks, talks to the
+#: The modules that may use the word ``lock`` on purpose: the service locks, talks to the
 #: session and uses the bus, and ``sample_pictures`` takes a ``flock`` that the scan for the word
 #: would find. Every other module of the package, the preview's, is scanned below. A module goes on
 #: this list only by a decision made here: a new module is in the scan from the start.

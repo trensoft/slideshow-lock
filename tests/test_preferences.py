@@ -1,4 +1,4 @@
-"""Tests of the settings window module that need no display (UI-1). What the window does on a
+"""Tests of the settings window module that need no display. What the window does on a
 screen is checked with ``tools/wayland-smoke/smoke_preferences.py``; its logic is tested in
 ``test_preferences_model.py``."""
 

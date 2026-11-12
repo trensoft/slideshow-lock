@@ -1,4 +1,4 @@
-"""Tests for the settings window's logic (UI-1), without GTK: the model between the fields and
+"""Tests for the settings window's logic, without GTK: the model between the fields and
 ``Settings``. The real window is checked with ``tools/wayland-smoke/smoke_preferences.py``.
 
 The "invalid value is not saved" and "the window never shows a value that was not saved" rules
@@ -221,7 +221,7 @@ def test_a_stored_duration_that_is_not_a_step_is_shown_and_left_alone(model):
 
 def test_the_idle_timeout_cannot_be_zero_but_the_grace_period_can(model):
     assert not model.set_int(KEY_IDLE_TIMEOUT_SECONDS, 0).ok
-    assert model.set_int(KEY_LOCK_GRACE_PERIOD_SECONDS, 0).ok  # 0: every input counts (D16)
+    assert model.set_int(KEY_LOCK_GRACE_PERIOD_SECONDS, 0).ok  # 0: every input counts (strict <)
 
 
 def test_the_idle_timeout_and_the_grace_period_keep_their_plain_ranges(model):
@@ -516,7 +516,7 @@ def test_the_chooser_opens_in_the_system_pictures_folder_when_the_chosen_one_is_
     system = tmp_path / "Képek"
     system.mkdir()
     _with_default(monkeypatch, str(system))
-    model.set_folder(str(tmp_path / "gone"))  # a missing folder can be stored (brief 3.7)
+    model.set_folder(str(tmp_path / "gone"))  # a missing folder can be stored
     assert model.chooser_start_folder() == str(system)
 
 
@@ -691,7 +691,7 @@ def test_a_transition_order_that_is_not_listed_is_refused(model, value):
     assert model.get(KEY_TRANSITION_ORDER) == before
 
 
-# -- the picture folder (D25) ---------------------------------------------------------------
+# -- the picture folder (the default is derived from XDG) --------------------------------------
 
 
 def test_with_nothing_chosen_the_default_folder_is_in_use_and_the_field_stays_empty(model):
@@ -720,7 +720,7 @@ def test_an_empty_folder_goes_back_to_the_default(model, tmp_path):
 
 def test_a_folder_that_does_not_exist_is_saved_and_the_note_says_so(model, tmp_path):
     missing = tmp_path / "later"
-    assert model.set_folder(str(missing)).ok  # brief 3.7: not an error
+    assert model.set_folder(str(missing)).ok  # a missing folder is not an error
     assert "does not exist yet" in model.folder_view().note
     missing.mkdir()
     assert "does not exist" not in model.folder_view().note

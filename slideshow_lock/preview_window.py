@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""GTK4 windows for the slideshow preview (CORE-2): one fullscreen window per monitor.
+"""GTK4 windows for the slideshow preview: one fullscreen window per monitor.
 
 The only module of the preview that imports GTK. The controller
 (``slideshow_lock.preview``) talks to the small interface of ``PreviewWindow`` and does

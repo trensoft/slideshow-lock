@@ -1,4 +1,4 @@
-"""The sleep guard (CORE-1): the lock before suspend, on its own thread.
+"""The sleep guard: the lock before suspend, on its own thread.
 
 The logic is tested directly (callbacks delivered in line); the thread is tested with real GLib
 loops: ``GuardThread`` for the guard and a ``LoopThread`` standing in for the main loop, which
@@ -445,7 +445,7 @@ def test_a_failure_to_take_the_inhibitor_again_is_an_error(caplog):
     assert any("delay inhibitor again" in m for m in caplog.messages)
 
 
-# -- AC-3.5-3, D34: waking before the round trip is over ------------------------------------------
+# -- AC-3.5-3: waking before the round trip is over ------------------------------------------------
 
 
 def test_ac_3_5_3_waking_before_the_lock_round_trip_ended_is_a_warning_with_the_elapsed_time(
@@ -501,8 +501,8 @@ def test_an_old_answer_does_not_end_the_next_round_trip_or_release_its_inhibitor
 
 
 def test_the_elapsed_time_counts_while_the_machine_sleeps():
-    """``time.monotonic`` stops during suspend; the guard's clock must not (D34 needs the real
-    time between the signal and the wake)."""
+    """``time.monotonic`` stops during suspend; the guard's clock must not (the early-wake WARNING
+    needs the real time between the signal and the wake)."""
     try:
         boot = time.clock_gettime(time.CLOCK_BOOTTIME)
     except AttributeError:
@@ -710,7 +710,7 @@ def _blocked_machine(tmp_path, monkeypatch, main, guard_control):
 def test_the_lock_before_suspend_goes_out_while_the_main_loop_is_stuck_in_the_image_source(
     tmp_path, monkeypatch
 ):
-    """The security condition of CORE-1: a stuck folder on the main loop must not keep the
+    """The security condition of the service: a stuck folder on the main loop must not keep the
     pre-sleep lock back. The main loop here is blocked inside ``os.scandir`` of a real
     ImageSource; the lock must still be made, and the inhibitor released, while it is."""
     main = LoopThread()
@@ -748,7 +748,7 @@ def test_negative_control_the_same_lock_on_the_stuck_main_loop_does_not_go_out(
     tmp_path, monkeypatch
 ):
     """The test above measures what it claims: with the sleep path wired on the main loop (the
-    design CORE-1 must not have) the lock waits for the stuck call."""
+    design the service must not have) the lock waits for the stuck call."""
     main = LoopThread()
     made = {}
     try:

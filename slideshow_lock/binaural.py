@@ -17,8 +17,8 @@ The sound is a side dish and never gets in the way of the slideshow or of the lo
   GStreamer, and only from a worker thread of its own. ``start`` and ``stop`` only queue a
   command and return at once: nothing the audio device does (a sound server that hangs, a slow
   ``set_state``) can stop the main loop, and so nothing it does can delay a lock, which is made on
-  the main loop. The tests of ``tests/test_preview.py`` (D11) scan this file like every other module
-  that is not on the lock side.
+  the main loop. The tests of ``tests/test_preview.py`` (a preview never locks) scan this file like
+  every other module that is not on the lock side.
 * A failure (GStreamer or an element missing, no sound device, a pipeline that does not start) is
   one line in the log (``[sound]``); the slideshow goes on without sound and the next start tries
   again. ``start`` and ``stop`` never raise.

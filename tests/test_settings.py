@@ -1,6 +1,6 @@
-"""Tests for the CORE-3 settings layer.
+"""Tests for the settings layer.
 
-Covers the four CORE-3 acceptance criteria from the card:
+Covers the four acceptance criteria of the settings layer:
 1. the service picks up a changed value without a restart (test_live_reload...)
 2. an invalid value cannot be saved (test_*_rejects_out_of_range / _rejects_unknown_choice)
 3. the identifier comes from a single constant (test_schema_id_matches_app_id)
@@ -48,12 +48,12 @@ def _pump_until(predicate, timeout_s: float = 2.0) -> bool:
     return predicate()
 
 
-# -- D17: single identifier constant -----------------------------------------
+# -- single identifier constant ---------------------------------------------
 
 
 def test_schema_id_matches_app_id():
     # The schema id in data/io.github.trensoft.slideshowlock.gschema.xml
-    # must be exactly APP_ID (D17) -- this fails loudly if either drifts.
+    # must be exactly APP_ID -- this fails loudly if either drifts.
     settings = Settings()
     assert settings._settings.props.schema_id == APP_ID
 
@@ -479,7 +479,7 @@ def test_disconnect_changed_stops_every_callback_of_that_object_and_no_other():
     assert _pump_until(lambda: first)
 
 
-# -- acceptance criterion 4: XDG-derived default picture folder (D25) ---------
+# -- acceptance criterion 4: XDG-derived default picture folder ---------------
 
 
 def test_default_picture_folder_uses_the_xdg_pictures_dir_itself(monkeypatch):
@@ -509,7 +509,7 @@ def test_get_picture_folder_warns_on_missing_folder(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="slideshow_lock.settings"):
         returned = settings.get_picture_folder()
 
-    # brief 3.7: a missing folder is a logged event, not an exception, and
+    # A missing folder is a logged event, not an exception, and
     # the service (here: the caller) keeps running -- so the path is still
     # returned, not swallowed.
     assert returned == missing

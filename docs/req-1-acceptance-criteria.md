@@ -1,12 +1,13 @@
-# REQ-1: Acceptance Criteria for Core Behavior (Spec 3.1-3.7)
+# Acceptance Criteria for Core Behavior (3.1-3.7)
 
-Owner: product requirements. Scope: sections 3.1-3.7 of the project brief only.
-No D-Bus/state-machine design (ARCH-1) and no test implementation (TEST-1) here.
+Owner: product requirements. Scope: the core behavior, sections 3.1-3.7 below.
+No D-Bus/state-machine design (`docs/architecture/dbus-state-machine.md`) and no test
+implementation here.
 
 Legend:
 - **[AUTO]** — verifiable by an automated test against a simulated D-Bus (CI-runnable).
-- **[MANUAL]** — verifiable ONLY in a real GNOME/Wayland session on real hardware (D7).
-  Goes to the manual test list (DOC-2), never claimed as "working" from CI alone.
+- **[MANUAL]** — verifiable ONLY in a real GNOME/Wayland session on real hardware.
+  Goes to the manual test list, never claimed as "working" from CI alone.
 
 ## 3.1 — Idle-triggered slideshow start
 
@@ -19,7 +20,7 @@ Then the service starts a fullscreen slideshow sourced from the configured image
 (verified at the control-layer call, not the rendered output; what appears on screen is
 not claimed by this [AUTO] criterion).
 
-**AC-3.1-2 [MANUAL]** (D15)
+**AC-3.1-2 [MANUAL]** (the idle trigger itself is AC-3.1-1, automated)
 Given the slideshow has started (AC-3.1-1),
 When the system has more than one connected monitor,
 Then exactly one fullscreen slideshow window appears per monitor.
@@ -35,7 +36,7 @@ Then the slideshow window closes immediately, independent of any timing calculat
 (verified at the control-layer call, not the rendered output; what appears on screen is
 not claimed by this [AUTO] criterion).
 
-**AC-3.2-2 [AUTO]** (D16, D30 — boundary set, strict `<`)
+**AC-3.2-2 [AUTO]** (boundary set at `G = 0` and at a `G > 0`, strict `<`)
 Given the slideshow has been running for duration `t` seconds since it started, with a
 configured grace period `G` seconds,
 When input arrives at time `t`,
@@ -54,18 +55,18 @@ the Preview action) AND the input is lock-eligible per AC-3.2-2,
 When that input is processed,
 Then the session lock is actually invoked.
 
-**AC-3.3-2 [AUTO]** (negative case, D11/D22)
+**AC-3.3-2 [AUTO]** (negative case: a preview never locks, and its input comes from its own windows)
 Given a slideshow is running because the user triggered "Preview" in the settings app,
 When any input occurs, at any time, under any grace-period value,
 Then the session is NEVER locked as a result of that input.
 
-**AC-3.3-3 [AUTO]** (negative case, explicitly required by brief section 8)
+**AC-3.3-3 [AUTO]** (negative case)
 Given the slideshow has NOT yet started (idle timer running, threshold not yet reached, or
 no slideshow active for any other reason),
 When input occurs,
 Then no lock occurs; the event is treated as an ordinary idle-timer reset only.
 
-> Note: AC-3.3-1/2/3 rest on decision D10, which is closed (see "Open items" below). The
+> Note: AC-3.3-1/2/3 rest on how 3.3 and 3.5 fit together, which is decided (see "Open items" below). The
 > sleep-triggered lock is an independent trigger, so the idle-triggered-and-running
 > precondition in this section does not apply to it. These three criteria are final as written.
 
@@ -91,7 +92,7 @@ it never suppresses the sleep-lock branch (AC-3.5-2).
 
 ## 3.5 — Sleep stops the slideshow and locks (independent trigger)
 
-**AC-3.5-1 [AUTO]** (D1/D35 -- resolved, independent trigger, no revision pending)
+**AC-3.5-1 [AUTO]** (resolved: an independent trigger, inside a held delay inhibitor; no revision pending)
 Given the system is about to suspend (`PrepareForSleep(true)` received while the sleep
 delay-inhibitor is held),
 When this signal is processed,
@@ -99,20 +100,20 @@ Then: (i) if a slideshow is running, it stops; (ii) the session locks — this l
 regardless of whether a slideshow was running and regardless of how it was started
 (idle-triggered or Preview). This is an independent trigger, not a special case of AC-3.3.
 
-**AC-3.5-2 [AUTO]** (D28 — safety condition)
+**AC-3.5-2 [AUTO]** (safety condition)
 Given an application holds an active idle-inhibit AND `PrepareForSleep(true)` is received,
 When this signal is processed,
 Then the session still locks. An idle-inhibit must suppress only the idle-start branch
 (3.1/3.4), never the sleep-lock branch (3.5).
 
-**AC-3.5-3 [AUTO]** (D32/D34)
+**AC-3.5-3 [AUTO]** (the round trip has logind's `InhibitDelayMaxSec`, 5 s by default)
 Given the `Lock` round-trip starts upon `PrepareForSleep(true)`,
 When `PrepareForSleep(false)` arrives before the round-trip has completed,
 Then a WARNING-level log entry is written identifying the incomplete round-trip
 (verified with a simulated bus plus an artificial delay — exact log wording/level is
-OPS-1's deliverable, not redefined here).
+`docs/logging-and-lifecycle.md`'s, not redefined here).
 
-**AC-3.5-4 [MANUAL]** (D7)
+**AC-3.5-4 [MANUAL]** (a real suspend cannot be simulated)
 Given a real suspend/resume cycle on the target hardware (RHEL 10.2, GNOME, Wayland),
 When the machine wakes,
 Then the login screen is shown, with no slideshow and no unlocked session visible.
@@ -134,19 +135,19 @@ files,
 When the idle threshold is reached,
 Then: (i) no slideshow starts; (ii) a WARNING-level log entry is written identifying the
 cause; (iii) the service process keeps running (no crash, no exit).
-(The level follows the OPS-1 logging convention; exact message wording and format are
-OPS-1's deliverable, this criterion only fixes the externally observable behavior.)
+(The level follows the logging convention of `docs/logging-and-lifecycle.md`; exact message wording and
+format are that document's, this criterion only fixes the externally observable behavior.)
 
-## Out of scope for REQ-1
+## Out of scope here
 
-- D-Bus abstraction layer and state machine design -> ARCH-1.
-- Test implementation (fixtures, simulated bus harness) -> TEST-1.
-- Exact log message wording/level -> OPS-1.
-- Settings storage format (GSettings vs TOML) -> separate open question (B4).
+- D-Bus abstraction layer and state machine design -> `docs/architecture/dbus-state-machine.md`.
+- Test implementation (fixtures, simulated bus harness) -> `tests/`.
+- Exact log message wording/level -> `docs/logging-and-lifecycle.md`.
+- Settings storage format (GSettings vs TOML) -> decided separately (GSettings, `slideshow_lock/settings.py`).
 
 ## Open items (need a decision before these criteria can be called final)
 
-1. **D10 (3.3 vs 3.5 interaction) -- resolved (D35).** Before suspend, the session locks
+1. **3.3 vs 3.5 interaction -- resolved.** Before suspend, the session locks
    unconditionally, independent of whether a slideshow was running or how it was started.
    Locking is a standalone safety function, not a side effect of the slideshow. AC-3.5-1 is
    final as written; no revision pending.
@@ -154,9 +155,3 @@ OPS-1's deliverable, this criterion only fixes the externally observable behavio
    if it ran for the grace period or longer (the same strict `<` as for input) the session
    also locks at once, within the grace period it does not. AC-3.4-2 is final as written;
    no revision pending.
-
----
-
-Note on identifiers: the D-numbers (such as D5 or D35) and the card labels in this document
-are internal provenance identifiers. Every criterion above is meant to be understood on its
-own, without them.

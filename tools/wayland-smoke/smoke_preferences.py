@@ -1,4 +1,4 @@
-"""Smoke test of the real settings window in a real Wayland session (UI-1; run it through
+"""Smoke test of the real settings window in a real Wayland session (run it through
 ``SMOKE_SCRIPT=smoke_preferences.py run.sh``).
 
 What it exercises: the real ``PreferencesWindow`` (real GTK widgets on headless mutter), the real
@@ -212,7 +212,7 @@ def main() -> int:
         and window.grace_spin.get_adjustment().get_upper() == 86400,
     )
     check(
-        "the folder field is empty and the group says the XDG default is in use (D25)",
+        "the folder field is empty and the group says the XDG default is in use",
         window.folder_row.get_text() == ""
         and default_picture_folder() in window.pictures_group.get_description(),
         window.pictures_group.get_description(),

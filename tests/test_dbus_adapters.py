@@ -1,4 +1,4 @@
-"""The real adapters against a fake desktop on private D-Bus daemons (CORE-1).
+"""The real adapters against a fake desktop on private D-Bus daemons.
 
 What this proves: the adapters speak the interfaces of ``docs/architecture/dbus-state-machine.md``
 the way that document says (method names, argument types, flag 8, signals, the unix fd of the

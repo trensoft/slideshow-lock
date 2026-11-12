@@ -1,4 +1,4 @@
-"""Fake adapters for the protocols of ``slideshow_lock.session`` (CORE-1): every event a bus could
+"""Fake adapters for the protocols of ``slideshow_lock.session``: every event a bus could
 bring is a method call, nothing is connected to a bus.
 
 Callbacks are delivered directly by default (the state machine tests are single threaded). A fake

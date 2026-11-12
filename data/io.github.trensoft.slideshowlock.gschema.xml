@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  CORE-3 settings schema. The schema id is the application id (D17); do not
-  introduce a second, independent identifier here.
+  The settings schema. The schema id is the application id (APP_ID, the one
+  identifier constant); do not introduce a second, independent identifier here.
 
-  The on/off switch described in brief section 5 is intentionally NOT a key in
-  this schema: per D4, enabling/disabling the service is done through the
+  The on/off switch of the service is intentionally NOT a key in
+  this schema: enabling/disabling the service is done through the
   systemd user unit (via the preferences window's D-Bus call), not through a
   GSettings boolean. See docs/architecture/dbus-state-machine.md, section 3.7.
 -->
@@ -18,7 +18,7 @@
       <summary>Idle timeout before the slideshow starts</summary>
       <description>
         Seconds of user inactivity after which the fullscreen slideshow
-        starts (brief section 3, point 1).
+        starts.
       </description>
     </key>
 
@@ -29,7 +29,7 @@
       <description>
         If the first input after the slideshow starts arrives within this
         many seconds of the slideshow starting, the session is NOT locked.
-        The comparison is a strict less-than (D16): a value of 0 means every
+        The comparison is a strict less-than: a value of 0 means every
         input locks, since no elapsed time can be less than zero.
       </description>
     </key>
@@ -39,9 +39,9 @@
       <summary>Slideshow picture folder</summary>
       <description>
         Absolute path to the folder the slideshow reads images from. An empty
-        string (the default) means: the XDG pictures directory itself (D25),
+        string (the default) means: the XDG pictures directory itself,
         read recursively. A missing folder is not an error; the service logs
-        it and keeps running (brief 3.7).
+        it and keeps running.
       </description>
     </key>
 

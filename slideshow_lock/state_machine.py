@@ -1,23 +1,25 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The state machine of the service (CORE-1, ARCH-1 section 4).
+"""The state machine of the service (section 4 of
+``docs/architecture/dbus-state-machine.md``).
 
 It decides when the slideshow starts, when the session locks and when nothing happens. It
 depends on the protocols of ``session.py`` and on nothing else: no ``Gio``, no bus name, no
 systemd. Every transition of the table in ``docs/architecture/dbus-state-machine.md`` is a
 method here, and the three reasons to lock are three separate paths, not one branch:
 
-* **input after an idle-triggered slideshow** (``_input_detected``): locks if the grace period
-  has run out (strict ``<``, D16). Only a slideshow with ``TriggerSource.IDLE`` can reach the
-  lock call; a manual preview cannot (D11, by construction: the call is not on its path). An
+* **input after an idle-triggered slideshow** (``_input_detected``): locks if the grace period has
+  run out (strict ``<``). Only a slideshow with ``TriggerSource.IDLE`` can reach the lock call; a
+  manual preview cannot (it never locks, by construction: the call is not on its path). An
   application that starts inhibiting idle while such a slideshow runs ends it the same way
   (``_on_inhibit_changed``): inside the grace period it just stops, after it the session locks at
   once, through the same method (``_end_slideshow_and_lock_if_due``), because "the next move"
   may be somebody else's.
 * **sleep** (``sleep_started`` / ``sleep_lock_finished``): the lock itself is made by the sleep
   guard on its own thread (``sleep_guard.py``), not here. This object only follows: it stops
-  the slideshow and records the result. It never asks the inhibition query (D28).
+  the slideshow and records the result. It never asks the inhibition query (an idle
+  inhibitor never keeps the sleep lock back).
 * **somebody else locked** (``_on_active_changed``): the state follows, nothing is called.
 
 The idle path asks ``InhibitionQuery`` in exactly one place, ``_on_idle``, and hears about a new
@@ -66,7 +68,7 @@ class TriggerSource(enum.Enum):
     MANUAL_PREVIEW = "manual_preview"
 
 
-#: The only sources whose input may lock the session. A preview is not on the list (D11).
+#: The only sources whose input may lock the session. A preview never locks.
 _LOCKING_SOURCES = frozenset({TriggerSource.IDLE})
 
 
@@ -155,7 +157,7 @@ class StateMachine:
         _LOG.info("[idle-trigger] disabled")
 
     def start_preview(self) -> bool:
-        """The manual preview (D11): a slideshow whose input never locks. True if it is up."""
+        """The manual preview: a slideshow whose input never locks. True if it is up."""
         if self._state is not State.IDLE_WATCHING:
             _LOG.info("[slideshow] preview not started (state=%s)", self._state.value)
             return False
@@ -213,7 +215,7 @@ class StateMachine:
         self._trigger = trigger
         self._started_at = started_at
         if trigger is TriggerSource.IDLE:
-            # input is the idle monitor's active transition (D22); a preview has none, the
+            # input is the idle monitor's active transition; a preview has none, the
             # windows' own input controllers report it through the slideshow
             self._cancel_active = self._idle.on_user_active(self._on_user_active)
             self._hold_idle_inhibit()
@@ -288,7 +290,7 @@ class StateMachine:
             )
             return
         grace = int(self._settings.get_lock_grace_period_seconds())
-        if elapsed < grace:  # strict less-than (D16): G = 0 never skips the lock
+        if elapsed < grace:  # strict less-than: G = 0 never skips the lock
             _LOG.info(
                 "[slideshow] stopped by %s after %.1fs, within the grace period of %ds: no lock",
                 cause,
@@ -390,7 +392,7 @@ class StateMachine:
 
     def sleep_started(self) -> None:
         """``PrepareForSleep(true)`` reached the sleep guard, which is locking on its own
-        thread. Stop the slideshow, whatever started it (D10: independent of how it began)."""
+        thread. Stop the slideshow, whatever started it (the sleep lock does not depend on it)."""
         if self._state in (State.DISABLED, State.LOCKED):
             return
         self._forget_refused_start()

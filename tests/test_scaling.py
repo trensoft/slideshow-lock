@@ -1,4 +1,4 @@
-"""Tests for the CORE-2 scaling geometry and the file checks (no decoder needed).
+"""Tests for the preview's scaling geometry and the file checks (no decoder needed).
 
 ``plan_render`` is plain arithmetic; ``jpeg_is_complete`` and ``read_image_file`` work on
 bytes and files. The decoding and the scaling themselves are in ``test_scaling_gdk.py``.

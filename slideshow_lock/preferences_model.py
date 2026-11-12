@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""What the settings window decides, without GTK (UI-1).
+"""What the settings window decides, without GTK.
 
-``PreferencesModel`` sits between the window's fields and ``Settings`` (CORE-3): which key a
+``PreferencesModel`` sits between the window's fields and ``Settings``: which key a
 field is bound to, which values it accepts, what it shows, and whether a value was really
 saved. It imports no GTK, so the CI tests it without a display; what the real window does
 with it is checked with ``tools/wayland-smoke/smoke_preferences.py`` and, for how it looks,
@@ -423,8 +423,9 @@ class PreferencesModel:
 
     @staticmethod
     def check_folder(text) -> "Checked":
-        """The folder typed or chosen, as it would be stored. Empty means the default folder (D25).
-        The folder need not exist (brief 3.7); a path that is not absolute, or that is a file, is
+        """The folder typed or chosen, as it would be stored. Empty means the default folder
+        (derived from the XDG pictures directory). The folder need not exist (a missing folder is a
+        logged WARNING, not an error); a path that is not absolute, or that is a file, is
         refused."""
         if not isinstance(text, str):
             return Checked(_("Enter a folder path."), None)

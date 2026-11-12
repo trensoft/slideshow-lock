@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The real adapters: the protocols of ``session.py`` on ``Gio.DBusConnection`` (CORE-1, ARCH-1).
+"""The real adapters: the protocols of ``session.py`` on ``Gio.DBusConnection`` (the design is
+``docs/architecture/dbus-state-machine.md``).
 
-Which bus carries what (ARCH-1 section 3):
+Which bus carries what (section 3 of that design):
 
 ========================  ===========  ==========================================================
 protocol                  bus          interface
@@ -27,7 +28,7 @@ protocol                  bus          interface
 ========================  ===========  ==========================================================
 
 Each constructor probes its interface once, with a cheap read-only call, and raises
-``UnsupportedSessionInterface`` naming what is missing (ARCH-1 section 7): the service never
+``UnsupportedSessionInterface`` naming what is missing (section 7 of the design): the service never
 runs silently degraded. The adapters take the connection as an argument, so a test can point
 them at a private bus; ``session_bus()`` and ``system_bus()`` are the production ones.
 
@@ -486,9 +487,9 @@ class ScreenSaverLock(_LockBase):
 
 
 class Login1SessionLock(_LockBase):
-    """``SessionLock`` on ``org.freedesktop.login1.Session`` (the fallback of ARCH-1 section 3.3,
-    when there is no ``org.gnome.ScreenSaver``): ``Lock()`` on this process's session and its
-    ``LockedHint`` for the state, on the system bus."""
+    """``SessionLock`` on ``org.freedesktop.login1.Session`` (the fallback of section 3.3 of
+    the design, when there is no ``org.gnome.ScreenSaver``): ``Lock()`` on this process's session
+    and its ``LockedHint`` for the state, on the system bus."""
 
     def __init__(self, conn: "Gio.DBusConnection") -> None:
         super().__init__(conn)
@@ -539,7 +540,8 @@ class Login1SessionLock(_LockBase):
 
 def make_session_lock(session: "Gio.DBusConnection", system: "Gio.DBusConnection"):
     """The screensaver if there is one, else logind's session lock, else
-    ``UnsupportedSessionInterface("ScreenSaver+login1.Session")`` (ARCH-1 sections 3.3 and 7)."""
+    ``UnsupportedSessionInterface("ScreenSaver+login1.Session")`` (sections 3.3 and 7 of the
+    design)."""
     try:
         return ScreenSaverLock(session)
     except UnsupportedSessionInterface as first:

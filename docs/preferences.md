@@ -1,4 +1,4 @@
-# UI-1: the settings window
+# The settings window
 
 A GTK 4 and libadwaita window for the settings, in titled groups of rows (Pictures, Transitions, Start the slideshow, Timing; the binaural sound is a row in Start the slideshow), with the Preview and Donate buttons at the bottom and, small and faint at the bottom right, the program's version and its maker ("<version> by TrenSoft"). The header bar has the window controls only. Every change is saved the moment it is made: there is no Save button. The groups sit in two columns and nothing scrolls: the whole window shows at its natural size, about 1100 x 680 pixels, which fits a 1366 x 768 screen (`tools/wayland-smoke/smoke_preferences.py` measures it with `--monitors 1366x768,...`). The version is not written anywhere in the code: `slideshow_lock.version` reads it from the `pyproject.toml` beside the package (a source checkout) or from the installed package's metadata (an install, where the RPM builds the package from that same file); with neither it shows `dev`. Run it from a source checkout:
 
@@ -17,7 +17,7 @@ The window has one option, `--debug` (`./run.sh settings --debug`, `slideshow-lo
 |---|---|---|
 | Picture folder (text, "Browse...") | `picture-folder` | an absolute path, `~/...`, or empty for the default |
 | Start the slideshow after | `idle-timeout-seconds` | 1 to 86400 |
-| Lock grace period | `lock-grace-period-seconds` | 0 to 86400 (input sooner than this does not lock, strictly sooner: D16) |
+| Lock grace period | `lock-grace-period-seconds` | 0 to 86400 (input sooner than this does not lock, strictly sooner) |
 | Show each picture for (one slider, big HH:MM:SS above it) | `slide-interval-seconds` | 1 to 86399 seconds, shown as 00:00:01 to 23:59:59 (10 s by default) |
 | Picture order | `order` | random, name |
 | Scaling | `scaling` | fill, fit |
@@ -37,8 +37,8 @@ natural size stays about 1100 x 680; `smoke_preferences.py` measures it). The sm
 over the settings window, hidden (not destroyed) when it is closed, and goes with its parent; its
 fields are kept current like the others. Every change is saved at once, as everywhere in the window.
 
-"Preview" runs the CORE-2 preview (`preview_app.start_preview`) on the values in the window, which
-are the stored ones (see "Saved at once" below), in the same process. It never locks (D11); any key, click, scroll or mouse movement ends it, and
+"Preview" runs the slideshow preview (`preview_app.start_preview`, `docs/preview.md`) on the values in the window, which
+are the stored ones (see "Saved at once" below), in the same process. It never locks; any key, click, scroll or mouse movement ends it, and
 closing the window ends it too. While it shows, the window's `Gtk.Application` holds an idle
 request for it, so the desktop's own idle delay does not blank the screen under the preview; it is
 given back whichever way the preview ends (`docs/preview.md`, section 2.1). While it holds the
@@ -55,8 +55,12 @@ preview controller each keep a change listener on it, and both are dropped (`Set
 preview ends, whichever way: input, the time limit, the window closing, no monitor, or a start
 that failed. The window's own change listener is not part of that: it stays on the window's own
 settings after the window closes, and does nothing from then on (`_closed`).
-There is no on/off switch: that goes through the systemd user unit
-(D4) and is not part of this window. No key of its own was added to the schema.
+The window's module is scanned by `tests/test_preview.py` like every module of the package that is
+not on the lock side (the scan keeps lock, session and bus names out of the preview code): its
+labels that say "lock" and "session" on purpose, the grace period field and its hint, are on the
+scan's `ALLOWED_NAMES`, and the window itself has no lock call.
+There is no on/off switch: the service is turned on and off through its systemd user unit, which
+is not part of this window. No key of its own was added to the schema.
 
 ## How it behaves
 
@@ -125,7 +129,7 @@ There is no on/off switch: that goes through the systemd user unit
 - A number outside its range, or text that is no number, is thrown away (the old value stays);
   GTK's default would have clamped it to the nearest limit. One corner: an emptied field reads as
   0, so it is thrown away everywhere but in the grace period, whose minimum is 0.
-- The folder field is empty while the default folder is in use (D25); the line of the group names
+- The folder field is empty while the default folder is in use; the line of the group names
   the folder in use, the default included. The default is the system's pictures folder itself, read recursively (the
   `XDG_PICTURES_DIR` of `~/.config/user-dirs.dirs`, `~/Képek` on a Hungarian system; `~/Pictures`
   if none is configured or if it is the home directory itself). The line says if the folder in use does not
@@ -199,6 +203,3 @@ and the maker are the line "<version> by TrenSoft" at the bottom of the settings
   "folder chosen" paths are exercised.
 - Real keyboard and mouse use of the widgets: the smoke sets the widgets by calling their setters,
   which fires the same handlers.
-- This module is not under the D11 scan of `tests/test_preview.py`: its labels say "lock" and
-  "session" on purpose. The preview it starts is that scanned code, and the window itself has no
-  lock call.

@@ -1,28 +1,29 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""GSettings-backed configuration for the slideshow-lock service (CORE-3).
+"""GSettings-backed configuration for the slideshow-lock service.
 
-Storage choice: GSettings, not TOML (decided default, see brief B4). This
+Storage choice: GSettings, not a TOML file. This
 module is a thin, validating wrapper around a single `Gio.Settings` instance
-bound to the schema whose id is :data:`slideshow_lock.APP_ID` (D17).
+bound to the schema whose id is :data:`slideshow_lock.APP_ID` (the one
+identifier constant).
 
-Scope note: the brief's "on/off switch" (section 5) is deliberately NOT a key
-here. Per D4 it is implemented as a systemd user unit enable/disable call
+Scope note: the "on/off switch" of the service is deliberately NOT a key
+here. It is implemented as a systemd user unit enable/disable call
 (see docs/architecture/dbus-state-machine.md, section 3.7, `UnitControl`),
 wired up by the preferences window and the state machine, not by this layer.
 
 Live reload: `Gio.Settings` emits a `changed` signal for every write that
 reaches the backend (regardless of which process, or which `Gio.Settings`
-instance in this process, made it), which is how acceptance criterion 1 (no
-restart needed) is met: callers subscribe via :meth:`Settings.connect_changed`
+instance in this process, made it), which is how a
+change takes effect without a restart: callers subscribe via :meth:`Settings.connect_changed`
 instead of polling.
 
 Invalid values: GSettings itself enforces the schema's `<range>` and
 `<choices>` constraints at the `set_*` call -- an out-of-range or not-listed
 value is rejected (the call returns `False` and the stored value is left
 untouched). This module never writes around that guarantee; it only adds a
-WARNING-level log entry (acceptance criterion 2, and the "[config]" event tag
+WARNING-level log entry (with the "[config]" event tag
 from docs/logging-and-lifecycle.md section 1).
 """
 
@@ -88,7 +89,7 @@ BINAURAL_DEFAULTS = {
 
 
 def default_picture_folder() -> str:
-    """Return the XDG-derived default picture folder (D25).
+    """Return the XDG-derived default picture folder.
 
     This is the user's own system pictures folder (`~/Képek` on a Hungarian
     system), not a subfolder of it: it is walked recursively, so a user who
@@ -125,7 +126,7 @@ class Settings:
         self._changed_handlers: List[int] = []
         self._missing_logged: set = set()
 
-    # -- live reload (acceptance criterion 1) ------------------------------
+    # -- live reload (no restart needed) ------------------------------------
 
     def connect_changed(self, callback: Callable[[str], None]) -> int:
         """Invoke *callback(key)* whenever any key changes, no restart needed.
@@ -284,12 +285,12 @@ class Settings:
     def set_binaural_carrier_hz(self, value: int) -> bool:
         return self._set_if_known(KEY_BINAURAL_CARRIER_HZ, value, self._set_uint)
 
-    # -- picture-folder (acceptance criterion 4 / D25 / brief 3.7) ----------
+    # -- picture-folder (an XDG-derived default; a missing folder is no error) --
 
     def get_picture_folder(self) -> str:
         """Return the configured picture folder, resolving the XDG default.
 
-        A missing folder is not an error (brief 3.7): this logs a single
+        A missing folder is not an error: this logs a single
         WARNING with the "[slideshow-dir]" event tag and still returns the
         path, so the caller (the slideshow layer) keeps running and simply
         finds no images.

@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Run the slideshow preview from a terminal (CORE-2).
+"""Run the slideshow preview from a terminal.
 
     glib-compile-schemas data/
     GSETTINGS_SCHEMA_DIR=data python3 -m slideshow_lock.preview_app [--folder PATH]
 
 One fullscreen window per monitor, the pictures of the folder, any key press, mouse
-movement, click or scroll ends it. It never locks the session (D11) and does not touch
+movement, click or scroll ends it. It never locks the session and does not touch
 the stored settings: ``--interval``, ``--order``, ``--scaling``, ``--pan`` and ``--transition``
 only apply to this run. Without ``--folder`` and the other options the stored settings are used; the
 stored folder, if none was chosen, is the system's pictures folder itself, read
 recursively (``~/Képek`` on a Hungarian system; ``~/Pictures`` if none is configured or it is
 the home directory itself).
 
-``start_preview`` is the part the settings window (UI-1) and the service (CORE-1) will
+``start_preview`` is the part the settings window and the service will
 call: it builds the controller from the real GTK windows, the real scaler and the GLib
 clock and worker. ``build_source`` builds the source for it (with the loader probe).
 

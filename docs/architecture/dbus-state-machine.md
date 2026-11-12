@@ -1,13 +1,14 @@
-# D-Bus Layer and State Machine Design (ARCH-1)
+# D-Bus Layer and State Machine Design
 
 Status: design document, no implementation. Owner: solution architecture.
 This document does not decide settings storage (tracked separately), does not implement
-the state machine (`CORE-1`), and does not cover the slideshow rendering layer (`CORE-2`).
+the state machine (`docs/service.md`), and does not cover the slideshow rendering layer
+(`docs/preview.md`).
 
 ## 1. Goal
 
 Define how the service talks to the session (D-Bus) and what states it can be in, so that
-`CORE-1` can implement the state machine against a fixed contract, and `TEST-1` can test it
+the service can implement the state machine against a fixed contract, and its tests can test it
 without a real GNOME session.
 
 ## 2. Design principle: one abstraction, two implementations
@@ -34,7 +35,7 @@ StateMachine
    |-- UnitControl (protocol)        -> real: systemd1 user manager | fake: records calls
 ```
 
-## 3. The six D-Bus starting points, plus D4's consequence
+## 3. The six D-Bus starting points, plus the unit toggle
 
 Each entry below lists: the bus interface, the abstraction method the state machine calls,
 and what happens if the interface is missing at runtime (acceptance criterion 4: fail with
@@ -57,7 +58,7 @@ a clear error, never run silently degraded).
   only: the idle inhibitor the service itself holds while its slideshow shows
   (`hold_idle_inhibit()` / `release_idle_inhibit()`, `Inhibit` with flag 8 under the service's
   application id) is left out, using `GetInhibitors` and `GetAppId`/`GetFlags` of each inhibitor.
-- Scope (D28, see 6.2): this query is consulted **only** on the idle-triggered path. It is
+- Scope (see 6.2): this query is consulted **only** on the idle-triggered path. It is
   never consulted on the sleep-triggered path.
 
 ### 3.3 Locking
@@ -87,10 +88,10 @@ a clear error, never run silently degraded).
   fatal to the whole service, not just one path, because requirement 3.5 cannot be met at
   all without it (there is no polling alternative that is correct).
 
-### 3.6 Delay inhibitor (D1)
+### 3.6 Delay inhibitor
 
 `PrepareForSleep` alone does not guarantee our lock call runs before the machine actually
-sleeps; `logind` does not wait for listeners by default. D1 adds a concrete mechanism:
+sleeps; `logind` does not wait for listeners by default. The delay inhibitor adds a concrete mechanism:
 
 - Interface: `org.freedesktop.login1.Manager`, method
   `Inhibit("sleep", app_id, reason, "delay")`, which returns a file descriptor.
@@ -101,7 +102,7 @@ sleeps; `logind` does not wait for listeners by default. D1 adds a concrete mech
 - Abstraction: `SleepSignal.acquire_delay_inhibitor() -> fd`, released via a context
   manager the caller controls explicitly around the stop+lock sequence.
 
-**D32, the measurable form of this design:** the inhibitor has a ceiling, named
+**The measurable form of this design:** the inhibitor has a ceiling, named
 `InhibitDelayMaxSec` in `logind`, 5 seconds by default. If the stop+lock sequence does not
 finish inside that window, `logind` proceeds with suspend anyway, **without an error
 signal** — the machine sleeps unlocked, silently. Consequences for the design:
@@ -112,26 +113,27 @@ signal** — the machine sleeps unlocked, silently. Consequences for the design:
 - The abstraction exposes this as `SleepSignal.inhibit_delay_max() -> float` (seconds).
 - The stop+lock sequence is the only thing that may run inside the held inhibitor; nothing
   else is allowed to add latency there.
-- This design document does not implement the "what if we miss the deadline" logging (that
-  is `CORE-1`/`OPS-1`'s D34: a WARNING-level log entry if `PrepareForSleep(false)` — i.e.
-  wake — arrives before the lock round trip is confirmed done). The abstraction must expose
-  enough to make that detectable: `SessionLock.lock()` returns a result object with a
-  timestamp, and the sleep handler records when it called `lock()` and when it returned.
+- This design document does not implement the "what if we miss the deadline" logging (that is the
+  early-wake warning of the service and of `docs/logging-and-lifecycle.md`: a WARNING-level log
+  entry if `PrepareForSleep(false)` — i.e. wake — arrives before the lock round trip is confirmed
+  done). The abstraction must expose enough to make that detectable: `SessionLock.lock()` returns a
+  result object with a timestamp, and the sleep handler records when it called `lock()` and when it
+  returned.
 
-### 3.7 D4's consequence: enabling/disabling the unit
+### 3.7 Enabling/disabling the unit
 
-D4 moved "turn the service on/off" out of the RPM post-install script and into the
-preferences app's toggle. That toggle needs a real mechanism:
+"Turn the service on/off" is not the RPM post-install script's (it runs as root and cannot
+enable a user's unit): it is the preferences app's toggle. That toggle needs a real mechanism:
 
 - Interface: `org.freedesktop.systemd1` (user service manager bus), methods
   `EnableUnitFiles`/`DisableUnitFiles`, `StartUnit`/`StopUnit`.
 - Abstraction: `UnitControl.set_enabled(bool) -> UnitControlResult` (success/failure +
   error text). This is a synchronous, result-returning call, not fire-and-forget: the
-  preferences window must only show "on" once the result confirms success (`UI-1`'s
+  preferences window must only show "on" once the result confirms success (the settings window's
   acceptance criterion already states the toggle "must not show an enabled state on
   failure" — this is the layer that makes that possible).
 - Rationale for going through D-Bus instead of shelling out to `systemctl --user`: it stays
-  inside the same abstraction/fake-bus pattern as every other interface here, so `TEST-1`
+  inside the same abstraction/fake-bus pattern as every other interface here, so the tests
   can exercise failure paths (e.g. unit file missing, permission denied) without a real
   systemd user session.
 
@@ -156,7 +158,7 @@ Not one of the six starting points: the state machine does not know it. `Preview
   button: `PreferencesWindow` calls a callback it is given (`before_preview`) before it starts the
   preview, and `settings_app.py`, the entry point of `slideshow-lock settings`, gives it
   `close_overview`, which makes this adapter on the session bus of the settings process. The window
-  and the preview modules may not name the bus (D11, `tests/test_preview.py`), so the window only
+  and the preview modules may not name the bus (a preview never locks, `tests/test_preview.py`), so the window only
   holds a callback; `settings_app.py` is on `LOCK_SIDE_MODULES`. A failing
   callback is logged and the preview starts anyway. `close_overview` makes a new adapter at each
   press, so a failure gives one WARNING per press of the button, not one per process. `python3 -m slideshow_lock.preferences`, the
@@ -179,7 +181,7 @@ a smaller thing, only the start of the unit for the running session, and nothing
   `dbus_adapters.py` (it raises `GLib.Error` as it is, nothing is probed when it is made).
 - Caller: `slideshow_lock/control.py`, the entry point of `slideshowlock` and
   `slideshow-lock control`. The window and the preview modules may not name the session or the bus
-  (D11, `tests/test_preview.py`), so the start is on the lock side (`control.py` is on
+  (a preview never locks, `tests/test_preview.py`), so the start is on the lock side (`control.py` is on
   `LOCK_SIDE_MODULES`) and the window is `settings_app.main`, called after it in the same process.
 - Why `ResetFailedUnit` first: a unit that used up its start limit stays `failed` (`docs/service.md`,
   section 8), and a failed unit is not started again. Its answer does not matter: a unit that is not
@@ -208,9 +210,9 @@ a smaller thing, only the start of the unit for the running session, and nothing
   time at login on gnome-session 46 (EL10) and 49 and later, the override of the entry with
   `Hidden=true` or `X-GNOME-Autostart-enabled=false`, and a real GNOME session.
 
-### 3.8 Unit readiness and `Type=` (answers OPS-1's open question)
+### 3.8 Unit readiness and `Type=` (answers the logging document's open question)
 
-`docs/logging-and-lifecycle.md` (OPS-1, section 4) left the unit's `Type=` undecided
+`docs/logging-and-lifecycle.md` (section 4) left the unit's `Type=` undecided
 pending this design, on the grounds that it depends on whether a concrete "the service
 is ready" point exists in the D-Bus setup sequence. It does.
 
@@ -221,7 +223,7 @@ is ready" point exists in the D-Bus setup sequence. It does.
   1. session bus connection established;
   2. `IdleWatcher` registered (3.1) and `IdleInhibitionQuery` reachable (3.2);
   3. `PrepareForSleep` signal subscription active (3.5);
-  4. the initial sleep-delay inhibitor lock acquired (3.6 / D1) — this is the step most
+  4. the initial sleep-delay inhibitor lock acquired (3.6) — this is the step most
      likely to fail (e.g. `login1` not present, or `InhibitDelayMaxSec` unreadable), and
      it is also the one decision whose absence would make pre-sleep locking silently
      unreliable, so it must gate readiness, not just be logged;
@@ -236,11 +238,11 @@ is ready" point exists in the D-Bus setup sequence. It does.
   5 of `logging-and-lifecycle.md` (ERROR-level missing-interface logging, manual-only
   verification) are trying to make visible; `Type=notify` makes it visible to `systemd`
   itself, not only to the journal.
-- Consequence for `PKG-1` (unit file author) and `OPS-1` (review gate, `systemd-analyze
+- Consequence for the packaging (unit file author) and its SRE review gate (`systemd-analyze
   verify`): the unit file needs `Type=notify` and a `TimeoutStartSec` wide enough to cover
   steps 1-4 above (a fixed value is not proposed here — that is a measurement, not a
   design decision; see section 9).
-- Consequence for `CORE-1`: the sd_notify call is a startup-sequence detail of the service
+- Consequence for the service: the sd_notify call is a startup-sequence detail of the service
   entry point, not of the state machine itself. It belongs in whatever wires the real
   adapters together and starts the state machine (`main()`/service bootstrap), after the
   bootstrap confirms step 4 above, before entering the event loop. The state machine
@@ -252,7 +254,7 @@ States:
 
 | State | Meaning |
 |---|---|
-| `DISABLED` | Service toggled off (3.7 / D4). No idle watch, no sleep handling. |
+| `DISABLED` | Service toggled off (3.7). No idle watch, no sleep handling. |
 | `IDLE_WATCHING` | Enabled, session unlocked, waiting for the idle timeout. |
 | `SLIDESHOW_RUNNING` | Slideshow visible. Carries `trigger_source ∈ {IDLE, MANUAL_PREVIEW}`. |
 | `LOCKING` | Transient: slideshow being torn down, `SessionLock.lock()` in flight. |
@@ -266,10 +268,10 @@ Transitions (abbreviated; guards in brackets):
 | `IDLE_WATCHING` | idle timeout fires | `is_idle_inhibited()` | — | `IDLE_WATCHING` (no-op) |
 | `SLIDESHOW_RUNNING(IDLE)` | inhibitor appears while running | `not grace_elapsed` | stop slideshow, **no lock** | `IDLE_WATCHING` |
 | `SLIDESHOW_RUNNING(IDLE)` | inhibitor appears while running | `grace_elapsed` (the same strict `<` and the same elapsed time as for input) | stop slideshow, lock at once, through the lock path of the input row | `LOCKING` → `LOCKED` |
-| `SLIDESHOW_RUNNING(IDLE)` | first input | `grace_elapsed` (strict `<`, D16) | stop slideshow, lock | `LOCKING` → `LOCKED` |
+| `SLIDESHOW_RUNNING(IDLE)` | first input | `grace_elapsed` (strict `<`) | stop slideshow, lock | `LOCKING` → `LOCKED` |
 | `SLIDESHOW_RUNNING(IDLE)` | first input | `not grace_elapsed` | stop slideshow, **no lock** | `IDLE_WATCHING` |
-| `SLIDESHOW_RUNNING(MANUAL_PREVIEW)` | any input | — (D11: never locks) | stop slideshow, **no lock** | `IDLE_WATCHING` |
-| any state except `LOCKED`/`DISABLED` | `PrepareForSleep(true)` | — (independent of slideshow state, D10; **ignores inhibitor**, D28) | stop slideshow if running, lock (inside held delay-inhibitor, 3.6) | `LOCKED` |
+| `SLIDESHOW_RUNNING(MANUAL_PREVIEW)` | any input | — (a preview never locks) | stop slideshow, **no lock** | `IDLE_WATCHING` |
+| any state except `LOCKED`/`DISABLED` | `PrepareForSleep(true)` | — (independent of slideshow state; **ignores inhibitor**) | stop slideshow if running, lock (inside held delay-inhibitor, 3.6) | `LOCKED` |
 | `LOCKED` | `ActiveChanged(false)` | — | — | `IDLE_WATCHING` |
 | any | preferences toggle off | — | release watches/inhibitor | `DISABLED` |
 | `DISABLED` | preferences toggle on | — | re-acquire idle watch + delay inhibitor | `IDLE_WATCHING` |
@@ -280,7 +282,7 @@ its own guarded transition, and explicitly absent from the sleep row), and 3.5 (
 its own row, reachable from every non-locked, non-disabled state) are three separate rows,
 not one merged branch.
 
-## 5. Trigger source and manual preview (D11)
+## 5. Trigger source and manual preview
 
 `SLIDESHOW_RUNNING` carries an enum, not a boolean, because a third source is conceivable
 later (there is none planned now, but a boolean would make that an implicit redesign):
@@ -293,13 +295,13 @@ class TriggerSource(Enum):
 
 The "first input stops the slideshow" transition is the same transition in both cases; only
 the guard differs — `MANUAL_PREVIEW` never satisfies the locking guard, by construction, not
-by a runtime check that could be bypassed. This directly implements D11 ("Preview never
-locks, no matter what input arrives") and keeps the already-approved exception (6. szakasz /
-settings app "Preview" button) from needing a special case anywhere else in the machine.
+by a runtime check that could be bypassed. This directly implements the rule "Preview never
+locks, no matter what input arrives" and keeps the already-approved exception (the settings
+app's "Preview" button) from needing a special case anywhere else in the machine.
 
 ## 6. Two independent concerns that look similar and are not
 
-### 6.1 Input detection differs by trigger source (D22)
+### 6.1 Input detection differs by trigger source
 
 `IdleWatcher.on_user_active()` only fires on an idle → active **transition**. That is exactly
 right for the `IDLE` path: the user was idle (that is why the slideshow started), and the
@@ -315,13 +317,13 @@ feed the same internal `input_detected` state machine event:
 - `IDLE`: subscribe to `IdleWatcher.on_user_active()`.
 - `MANUAL_PREVIEW`: subscribe directly to the slideshow window's own GTK input
   controllers (motion, click, key, scroll), one per monitor window, any one firing is sufficient.
-  As built in CORE-2 (`docs/preview.md`) a close request on a preview window counts as input too
+  As built in the preview (`docs/preview.md`) a close request on a preview window counts as input too
   (a window closed from outside would otherwise leave a process with no window), and a pointer
   that merely rests under a new window does not count: the first position is the baseline and
   motion counts from 2 px away. Whether 2 px is enough on a touchpad or on a desk that shakes
   is open and only a live trial can decide it.
 
-### 6.2 Inhibition scope is per-path, not a single flag (D28)
+### 6.2 Inhibition scope is per-path, not a single flag
 
 `InhibitionQuery.is_idle_inhibited()` is read in exactly one place: the `IDLE_WATCHING` →
 `SLIDESHOW_RUNNING(IDLE)` transition guard, and the "inhibitor appeared while running"
@@ -339,9 +341,9 @@ wake.
 | `Mutter.IdleMonitor` | Idle-triggered slideshow disabled; service logs a clear error and keeps running (manual preview and sleep-lock still work). |
 | `ScreenSaver` and `login1.Session.Lock` both absent | Idle-triggered slideshow disabled entirely (would otherwise show without ever locking). |
 | `login1.PrepareForSleep` | Fatal at startup: requirement 3.5 has no fallback. |
-| `login1.Manager.Inhibit("sleep", ...)` | Fatal at startup: without the delay inhibitor D1/D32 cannot be met, and starting anyway would silently violate 3.5 under fast suspend. |
+| `login1.Manager.Inhibit("sleep", ...)` | Fatal at startup: without the delay inhibitor the lock before suspend cannot be waited for, and starting anyway would silently violate 3.5 under fast suspend. |
 | `org.gnome.Shell` (the overview) | Nothing is closed, the slideshow starts as before; DEBUG when the shell is not on the bus, one WARNING for any other failure (3.7a). |
-| `systemd1` user manager | Preferences toggle fails with a reported error (D4's `UnitControlResult`); the service itself can still run if already started. |
+| `systemd1` user manager | Preferences toggle fails with a reported error (`UnitControlResult` of 3.7); the service itself can still run if already started. |
 
 In every case the failure is detected once, at startup or at first use, by a capability
 probe (a cheap read-only call per interface, e.g. `Introspect` or a harmless property read),
@@ -350,15 +352,15 @@ means "runs as if nothing were wrong" — logging and refusing/limiting function
 required behaviour, not an error dialog aimed at the end user (there is no end user watching
 a background service).
 
-## 8. Testability (acceptance criterion 2, no automated tests yet)
+## 8. Testability (no automated tests yet)
 
-Because the state machine only depends on the protocols in section 2, `TEST-1` can drive
+Because the state machine only depends on the protocols in section 2, the tests can drive
 every row of the table in section 4 by calling the fake adapters directly: fire a fake idle
 timeout, toggle a fake inhibitor, fire a fake `PrepareForSleep`, assert on calls recorded by
 the fake `SessionLock`/`UnitControl`. No GNOME session, no real D-Bus connection, and no
 wall-clock sleep are required for any of this. Real timing (the `InhibitDelayMaxSec` budget,
 the visual multi-monitor behaviour) is explicitly **not** coverable this way — see the open
-question in section 9 — and is left to the manual test list (`DOC-2`), not claimed here as
+question in section 9 — and is left to the manual test list, not claimed here as
 automated.
 
 ## 9. Explicitly out of scope / open questions
@@ -373,5 +375,5 @@ automated.
   the capability-probe pattern in section 7, not by a parallel implementation; this document
   takes no position on whether that target ships at all.
 - A concrete `TimeoutStartSec` for the `Type=notify` unit (3.8) is not proposed here — it
-  needs a measured startup time on real hardware, not a guessed constant; owned by `PKG-1`/
-  `OPS-1`.
+  needs a measured startup time on real hardware, not a guessed constant; owned by the packaging and
+  its SRE review gate.
