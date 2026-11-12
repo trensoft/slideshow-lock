@@ -17,6 +17,7 @@ import signal
 import time
 from types import SimpleNamespace
 
+import pytest
 from gi.repository import GLib
 
 from slideshow_lock import loop
@@ -83,6 +84,38 @@ def test_a_signal_add_that_raises_attribute_error_falls_back_to_the_old_name(mon
     monkeypatch.setattr(loop, "GLib", old)
     assert loop.unix_signal_add(0, signal.SIGUSR1, _callback) == 8
     assert calls == [(0, signal.SIGUSR1, _callback)]
+
+
+@pytest.mark.parametrize("error", [TypeError, KeyboardInterrupt])
+def test_an_error_other_than_attribute_error_from_signal_add_goes_on(monkeypatch, caplog, error):
+    """Only a name that is not there counts as absent: any other error is a real one, it is not
+    swallowed and the old name is not tried in its place."""
+
+    def broken(*_args):
+        raise error("signal_add")
+
+    calls = []
+    old = SimpleNamespace(unix_signal_add=lambda *args: calls.append(args) or 8)
+    monkeypatch.setattr(loop, "_glib_unix", lambda: SimpleNamespace(signal_add=broken))
+    monkeypatch.setattr(loop, "GLib", old)
+    with caplog.at_level(logging.WARNING, logger=loop.__name__), pytest.raises(error):
+        loop.unix_signal_add(0, signal.SIGUSR1, _callback)
+    assert calls == []
+    assert caplog.records == []
+
+
+@pytest.mark.parametrize("error", [TypeError, KeyboardInterrupt])
+def test_an_error_other_than_attribute_error_from_the_old_name_goes_on(monkeypatch, caplog, error):
+    """The same for the old place: no warning and no answer of 0 for an error that is real."""
+
+    def broken(*_args):
+        raise error("unix_signal_add")
+
+    monkeypatch.setattr(loop, "_glib_unix", lambda: None)
+    monkeypatch.setattr(loop, "GLib", SimpleNamespace(unix_signal_add=broken))
+    with caplog.at_level(logging.WARNING, logger=loop.__name__), pytest.raises(error):
+        loop.unix_signal_add(0, signal.SIGUSR1, _callback)
+    assert caplog.records == []
 
 
 def test_glibunix_without_signal_add_and_no_old_name_warns_and_answers_zero(monkeypatch, caplog):

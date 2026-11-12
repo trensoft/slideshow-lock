@@ -64,15 +64,16 @@ def unix_signal_add(priority: int, signum: int, callback: Callable[[], bool]) ->
     """Call *callback()* on the main loop when the process gets signal *signum*; returns the id of
     the source, or 0 (and a warning) where this glib has no Unix signal watch at all.
 
-    glib 2.79.2 moved ``GLib.unix_signal_add`` to ``GLibUnix.signal_add``, and the ``GLib`` typelib
-    of glib 2.88 no longer has the old name. The new place is used where it has the call, the old
-    one where it does not. Measured (the call run in the unpacked RPM roots, 2026-11-12): the
+    glib 2.79.2 moved the Unix calls to the ``GLibUnix`` namespace, and the ``GLib`` typelib of
+    glib 2.88 no longer has the old name ``GLib.unix_signal_add``. The call ``GLibUnix.signal_add``
+    itself exists from glib 2.88 only. The new place is used where it has the call, the old one
+    where it does not. Measured (the call run in the unpacked RPM roots, 2026-11-12): the
     ``GLibUnix`` namespace is importable on EL10 (glib 2.80) and Fedora 43 (glib 2.86) but has
     only ``signal_add_full`` there, no ``signal_add``; the call exists from glib 2.88 (Fedora 44
     and later). So the call itself is looked up, and an ``AttributeError`` from it counts as
-    absent. No deprecation warning on glib 2.88 and newer. Without a watch the default action of
-    the signal applies: the program ends without the shutdown of the application; a start must
-    not fail for that."""
+    absent; any other error is a real one and goes on. No deprecation warning on glib 2.88 and
+    newer. Without a watch the default action of the signal applies: the program ends without the
+    shutdown of the application; a start must not fail for that."""
     unix = _glib_unix()
     new = getattr(unix, "signal_add", None)
     if new is not None:
