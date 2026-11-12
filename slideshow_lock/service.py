@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""The service: idle -> slideshow -> lock on input, plus the lock before suspend (CORE-1).
+"""The service: idle -> slideshow -> lock on input, plus the lock before suspend.
 
 Run it from a source checkout, no RPM and no systemd needed::
 
@@ -15,16 +15,16 @@ session. Before the machine suspends the session is locked whatever else is goin
 slideshow, or an application inhibiting idle). Ctrl+C or SIGTERM ends the service. The folder, the
 intervals and the other options only apply to this run (the stored settings are not written).
 
-``build_service`` is the wiring (adapters, state machine, sleep guard) and takes its connections
-and its slideshow as arguments, so the tests run it on private buses; ``main`` adds the GTK
-application, the picture source and the real session. Startup follows ARCH-1 section 7: a
-missing idle monitor, or no way to lock, keeps the idle-triggered slideshow from starting and is
-logged at ERROR; a missing ``PrepareForSleep``, delay inhibitor or lock facility for the sleep
-path is fatal (exit status 1), because the service would otherwise run without the lock before
-suspend and say nothing.
+``build_service`` is the wiring (adapters, state machine, sleep guard) and takes its connections and
+its slideshow as arguments, so the tests run it on private buses; ``main`` adds the GTK application,
+the picture source and the real session. Startup follows section 7 of
+``docs/architecture/dbus-state-machine.md``: a missing idle monitor, or no way to lock, keeps the
+idle-triggered slideshow from starting and is logged at ERROR; a missing ``PrepareForSleep``, delay
+inhibitor or lock facility for the sleep path is fatal (exit status 1), because the service would
+otherwise run without the lock before suspend and say nothing.
 
-Not here: ``sd_notify`` readiness and the unit file (PKG-1), the unit enable/disable call
-(``UnitControl``, UI-1).
+Not here: ``sd_notify`` readiness and the unit file (the packaging's), the unit enable/disable
+call (``UnitControl``, the settings window's).
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class ServiceSettings(SessionSettings):
 
 
 class PreviewSlideshow:
-    """``SlideshowControl`` on the CORE-2 preview controller and the image source.
+    """``SlideshowControl`` on the preview controller and the image source.
 
     ``start`` refuses, with the reason, when there is no picture to show or no monitor (3.7); the
     controller itself would open empty windows. When it refuses because the folder is still being
@@ -197,7 +197,8 @@ class PreviewSlideshow:
 
 class _NoIdle:
     """Stands in for the idle monitor when there is none: nothing ever fires. The state machine
-    then never starts a slideshow; the sleep lock is not affected (ARCH-1 section 7)."""
+    then never starts a slideshow; the sleep lock is not affected (section 7 of the
+    design)."""
 
     def on_idle(self, timeout_s, callback) -> None:
         pass

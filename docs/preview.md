@@ -1,4 +1,4 @@
-# Slideshow preview (CORE-2)
+# Slideshow preview
 
 Modules: `slideshow_lock/preview.py` (controller), `slideshow_lock/preview_window.py` (GTK4
 windows), `slideshow_lock/scaling.py` (decode and scale), `slideshow_lock/preview_app.py`
@@ -12,7 +12,7 @@ machine; section 8 lists exactly what was and was not checked.
 ## 1. What it does
 
 One fullscreen window per monitor, showing the pictures of the picture folder, each scaled to
-the monitor's real pixel size. Any input ends it. It never locks the session (D11): the preview
+the monitor's real pixel size. Any input ends it. It never locks the session: the preview
 code makes no call to the session, the screensaver, the login manager or any lock facility, and
 two tests look for one (section 8). The `Gtk.Application` of `preview_app` registers itself on
 the session bus, which opens one session-bus connection (measured in review); that is application
@@ -30,8 +30,8 @@ application is held until the fade-out is over (`preview_app._fade_out`), so the
 that is closing, does not cut the sound off. The sound is in `docs/binaural.md`; it is not part of the controller,
 which still knows nothing of it.
 
-Not in this card: locking, the state machine, D-Bus, systemd (CORE-1); the settings window
-(UI-1); changing the default of the pan switch. Since 1.0.1 a picture can come in with one of ten
+Not in this document: locking, the state machine, D-Bus, systemd (`docs/service.md`); the settings
+window (`docs/preferences.md`); changing the default of the pan switch. Since 1.0.1 a picture can come in with one of ten
 transitions (section 2, "Transitions").
 
 ## 2. Behaviour
@@ -130,7 +130,7 @@ transitions (section 2, "Transitions").
   (`[slideshow-dir] no picture to show ...`, WARNING once the folder scan is complete, INFO while
   it still runs), and the preview carries on by itself when a picture turns up. For the preview
   this is on purpose: whoever pressed "Preview" sees why nothing is shown. It is *not* the
-  idle path's behaviour: REQ-1 AC-3.7-1 says no slideshow starts there when there is nothing to
+  idle path's behaviour: AC-3.7-1 of `docs/req-1-acceptance-criteria.md` says no slideshow starts there when there is nothing to
   show. The service does what the criterion says: `PreviewSlideshow.start` refuses, with the reason,
   when `current()` is `None` (`docs/service.md`). If the last picture on screen is deleted the windows go
   to the same state; a picture that is deleted while it is on screen stays (its pixels are in
@@ -356,8 +356,8 @@ The walk is chopped into steps of a time budget (see the image source's document
 `scandir`, `stat`, `open` or monitor creation on a hung network mount blocks inside the kernel,
 and then the main loop stops with it. So the claim is: *picture decoding and picture reading are
 not on the main loop; the image source's walk and header reads are*. Putting the source's I/O on
-its own thread or process was named a precondition of CORE-1 for the safety condition that locking
-before sleep never waits for picture I/O. CORE-1 meets the condition the other way round: the sleep
+its own thread or process was named a precondition of the service for the safety condition that
+locking before sleep never waits for picture I/O. The service meets the condition the other way round: the sleep
 path runs on a thread of its own with its own main context and never waits for the main loop
 (`docs/service.md`, tested with a real image source stuck inside `os.scandir`), so the source stays
 where it is, and a stuck folder can delay a picture or the slideshow's own stop, not the lock.
@@ -422,8 +422,8 @@ machine and what else runs on it, and the earlier range stays the one to expect.
   process against running out of memory. Under a memory limit (cgroup, `RLIMIT_AS`) GLib's
   `failed to allocate` ends the **whole process** with SIGTRAP, and `except Exception` does not
   catch that; nor does it help against the kernel's OOM killer. Decoding in a separate process
-  with `RLIMIT_AS` is the answer to that, and is a separate item before CORE-1, not part of this
-  card.
+  with `RLIMIT_AS` is the answer to that, and is a separate item, not part of the
+  preview.
 
 ## 5. Where the code stands in the layers
 
@@ -458,9 +458,12 @@ the time limit of two minutes (section 2.1).
 `start_preview(settings, source, application=None)` in the same module is what the settings window
 calls (see `docs/preferences.md`); the service has its own controller wiring. Give it the
 `Gtk.Application` and the preview also keeps the desktop's idle delay from blanking the screen
-(section 2.1). If it raises once the windows may be open (in the controller's start, or while it
-sets the time limit), it stops the controller before the error goes on, so the windows close and
-the worker thread and the timers are given back: the caller gets no controller to do it with.
+(section 2.1). If it raises once the controller has its windows (later in the controller's start,
+or while it sets the time limit), it stops the controller before the error goes on, so those
+windows close and the worker thread and the timers are given back: the caller gets no controller
+to do it with. This does not cover `open_monitor_windows()` raising part way, for example in the
+second monitor's `PreviewWindow`: the windows it has already opened are not the controller's yet,
+and they stay open.
 
 ## 7. Facts measured while building it
 
@@ -692,6 +695,6 @@ RHEL 10.2 versions**; MEAS-1's stack is GTK 4.16 and gdk-pixbuf 2.42.12.
 Not proven by any of this: how the pictures look, behaviour on a real GPU or with fractional
 scaling, real multi-monitor hardware, battery cost of the pan animation, behaviour on RHEL 10.2,
 that the GNOME "reduce animations" choice reaches `gtk-enable-animations`. These belong on the
-manual test list (DOC-2).
+manual test list.
 That list is not in this repository yet; the trial steps that exist are in
 [`try-it.md`](try-it.md) and under "Trial on a real session" in [`service.md`](service.md).

@@ -1,7 +1,7 @@
-# The service: state machine, sleep guard, entry point (CORE-1)
+# The service: state machine, sleep guard, entry point
 
 Source of truth for the behaviour: `docs/req-1-acceptance-criteria.md` (3.1 to 3.7) and
-`docs/architecture/dbus-state-machine.md` (ARCH-1). This document says what was built, where it
+`docs/architecture/dbus-state-machine.md` (the design). This document says what was built, where it
 differs from the design text, what is automated, and what only a real session can show.
 
 **Status wording.** Automated tests green; live verification pending. Nothing below is claimed to
@@ -16,7 +16,7 @@ No RPM, no systemd:
     GSETTINGS_SCHEMA_DIR=data python3 -m slideshow_lock.service \
         --folder ~/Pictures --idle-timeout 30 --grace 3
 
-- Idle for `--idle-timeout` seconds: one fullscreen window per monitor (the CORE-2 preview windows).
+- Idle for `--idle-timeout` seconds: one fullscreen window per monitor (the preview windows of `docs/preview.md`).
 - The first input ends it. If at least `--grace` seconds have passed since the slideshow was
   started, the session is locked; sooner, it is not (strict `<`: `--grace 0` always locks). The
   time is taken just before the windows are opened, so it includes the time the start itself
@@ -69,7 +69,7 @@ No RPM, no systemd:
    60` to see none). The slideshow does not wait for the next input.
 5. `systemctl suspend` with the slideshow running, and again with an idle inhibitor held: on
    wake the lock screen must be there, no slideshow, no unlocked desktop visible (AC-3.5-4).
-6. Look for the D34 warning in the output after a suspend (`resume received before lock
+6. Look for the early-wake warning in the output after a suspend (`resume received before lock
    sequence completed`); it should not appear.
 7. Let the slideshow run for longer than the desktop's idle delay (shorten "Screen Blank" and
    "Automatic Screen Lock" in the settings to 1 minute for the trial, and run the service with
@@ -93,7 +93,7 @@ forms were not tried.
 | File | What it is |
 |---|---|
 | `session.py` | The protocols (`IdleWatcher`, `InhibitionQuery`, `SessionLock`, `SleepSignal`, `SlideshowControl`, `OverviewControl`, ...), `LockResult`, `UnsupportedSessionInterface`. No `Gio`. |
-| `state_machine.py` | The states and transitions of ARCH-1 section 4. Depends on the protocols only. |
+| `state_machine.py` | The states and transitions of section 4 of the design. Depends on the protocols only. |
 | `sleep_guard.py` | The lock before suspend (`SleepGuard`) and the thread it runs on (`GuardThread`). |
 | `dbus_adapters.py` | The real adapters on `Gio.DBusConnection` (the overview of the shell included: `GnomeShellOverview`). |
 | `service.py` | Wiring (`build_service`), the preview as a `SlideshowControl` (`PreviewSlideshow`, which closes the shell's overview before it opens the windows and starts and fades out the binaural sound, `docs/binaural.md`), the program. |
@@ -110,14 +110,14 @@ every protocol, so every row of the transition table runs without a bus (`tests/
 |---|---|---|
 | 3.1-1 idle starts the slideshow (not inhibited, not locked, none running) | `StateMachine._on_idle` | `test_state_machine.py` |
 | 3.2-1 first input stops it at once | `_input_detected` (idle monitor's active transition, or a window's input) | same |
-| 3.2-2 grace period, strict `<` (D16) | `_input_detected`: `elapsed < grace` means no lock | the boundary table, `G = 0` and `G > 0` |
-| 3.3-1/2/3 lock only for a running, idle-triggered slideshow; a preview never locks (D11) | `_LOCKING_SOURCES = {IDLE}`: a preview has no path to the lock call | the preview with every grace and timing; input with nothing running |
+| 3.2-2 grace period, strict `<` | `_input_detected`: `elapsed < grace` means no lock | the boundary table, `G = 0` and `G > 0` |
+| 3.3-1/2/3 lock only for a running, idle-triggered slideshow; a preview never locks | `_LOCKING_SOURCES = {IDLE}`: a preview has no path to the lock call | the preview with every grace and timing; input with nothing running |
 | 3.4-1 inhibit blocks the start | `_on_idle` | `test_state_machine.py` |
 | the slideshow's own idle inhibitor: held while an idle-triggered slideshow shows, never taken for a preview, given back on every end, never mistaken for another application's, and another application's next to it still ends the slideshow | `StateMachine._hold_idle_inhibit` and `_release_idle_inhibit` (from `_finish_slideshow` and `disable`), `SessionManagerInhibition` | the "idle inhibitor of the slideshow itself" sections of `test_state_machine.py`, `test_dbus_adapters.py` and `test_service_dbus.py` |
 | 3.4-2 one raised during the run stops it, and locks at once if the grace period is over (the same strict `<` and elapsed time as input), none within it; a preview is left alone | `_on_inhibit_changed`, `_end_slideshow_and_lock_if_due` | the boundary table for both ends of a slideshow, a control that compares them, a failing lock, no running slideshow, the preview |
-| 3.5-1 sleep stops the slideshow and locks, independent of how it started (D10, D35) | `SleepGuard` locks, `StateMachine.sleep_started` stops | `test_sleep_guard.py`, `test_service_dbus.py` |
-| 3.5-2 an idle inhibit never keeps the sleep lock back (D28) | `SleepGuard` has no inhibition query, by its constructor and by its imports | an AST test on the module; an end-to-end test with the inhibit set |
-| 3.5-3 resume before the lock round trip ended: WARNING (D32, D34) | `SleepGuard._after_wake` | with fakes and with the real adapters and an artificial delay |
+| 3.5-1 sleep stops the slideshow and locks, independent of how it started (the sleep lock is a trigger of its own) | `SleepGuard` locks, `StateMachine.sleep_started` stops | `test_sleep_guard.py`, `test_service_dbus.py` |
+| 3.5-2 an idle inhibit never keeps the sleep lock back | `SleepGuard` has no inhibition query, by its constructor and by its imports | an AST test on the module; an end-to-end test with the inhibit set |
+| 3.5-3 resume before the lock round trip ended: WARNING with the elapsed time | `SleepGuard._after_wake` | with fakes and with the real adapters and an artificial delay |
 | 3.6-1 locked: nothing happens | `LOCKED` ignores idle, input and inhibit | `test_ac_3_6_1_...` |
 | 3.7-1 no pictures: no slideshow, WARNING, the service keeps running | `PreviewSlideshow.start` returns the reason, the machine logs it | `test_ac_3_7_1_...` |
 | an idle event before the folder scan found its first picture: the refused start is remembered until the scan finds a picture (then it starts, after the same inhibitor check) or the user is active again (then it is dropped); the idle watch itself fires once per idle period, so without this the slideshow waited for the next one | `PreviewSlideshow.connect_ready` (once per start refused while scanning), `StateMachine._remember_refused_start` / `_on_slideshow_ready`; a refused manual preview is not remembered | the "idle event before the first picture" tests of `test_state_machine.py` and `test_service_wiring.py` |
@@ -158,7 +158,7 @@ would sleep unlocked, with no error. So:
   thread can still see the wake signal (every time: the guard does not remember that a lock was
   made, see below); (3) when the answer is in, releases the delay inhibitor;
   (4) posts the result. The inhibitor is held until the round trip is over, not until the call
-  was made (ARCH-1 section 3.6: release in a `finally`).
+  was made (section 3.6 of the design: release in a `finally`).
 - When the thread ends (the machine is disabled, or the service closes) it releases the inhibitor
   and closes both adapters, so their signal subscriptions go with it.
 - Nothing in the guard touches the image source, the windows, the settings or the state machine's
@@ -205,10 +205,10 @@ same step as the call. Taking "locked" from `LockedHint` with a time limit inste
 change, not made here.
 
 **What this does not cover:** the *D-Bus daemon* or the *shell* being slow, and `Lock()` taking
-longer than the window: that is the D34 case, logged, not fixed. What "confirmed" means here is the
+longer than the window: that is the early wake, logged, not fixed. What "confirmed" means here is the
 `Lock()` answer, not the lock screen being drawn.
 
-## 5. Failure at startup (ARCH-1 section 7)
+## 5. Failure at startup (section 7 of the design)
 
 | Missing | Effect |
 |---|---|
@@ -238,8 +238,8 @@ suspend would not wait for the lock).
 ## 7. Not done here
 
 - `sd_notify` readiness (the unit is `Type=simple`, section 8); `UnitControl`, the unit enable and
-  disable call (UI-1). The state machine has `enable()` and `disable()`, which the toggle will call.
-- A manual preview as a service function (`StateMachine.start_preview`): the transitions and the D11
+  disable call (the settings window's). The state machine has `enable()` and `disable()`, which the toggle will call.
+- A manual preview as a service function (`StateMachine.start_preview`): the transitions and the never-locks
   guarantee are there and tested; nothing calls it yet (the settings window's Preview button will).
 - Real timing: whether the lock fits into `InhibitDelayMaxSec` on the reference machine.
 - The idle inhibitor of the slideshow on a real session: that GNOME's session manager accepts the
@@ -314,4 +314,4 @@ suspend would not wait for the lock).
 - The unit is not enabled by the package by itself (a preset is a separate decision). The user
   switches the service with `systemctl --user enable --now slideshow-lock` and
   `systemctl --user disable --now slideshow-lock`, as the README says. The settings window has no
-  on/off switch in 1.0.0; the toggle of UI-1 is planned and is not there.
+  on/off switch in 1.0.0; the toggle of the settings window is planned and is not there.

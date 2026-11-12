@@ -1,7 +1,7 @@
 # Pan animation: battery measurement protocol (outline)
 
-Status: protocol outline for the reference laptop. Nothing in it has been measured. DOC-2 takes it
-over and turns it into the manual test list entry. The result decides whether the default of
+Status: protocol outline for the reference laptop. Nothing in it has been measured. The manual test
+list takes it over as one of its entries. The result decides whether the default of
 `pan-portrait-images` may ever change from off; that decision is the project owner's, not the
 measurement's.
 

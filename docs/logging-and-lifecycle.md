@@ -1,10 +1,10 @@
-# Logging Convention and Service Lifecycle (OPS-1)
+# Logging Convention and Service Lifecycle
 
-Owner: SRE / operations. Card: OPS-1. Related decisions: D7, D14, D32, D34.
+Owner: SRE / operations.
 
-Status note (D7/section 9 of the brief): no agent container has a real GNOME/Wayland
+Status note: no agent container has a real GNOME/Wayland
 session. Everything below marked "automatable" is testable with the simulated D-Bus
-used by TEST-1/CORE-1. Everything marked "manual-only" can only be verified on
+used by the service's tests. Everything marked "manual-only" can only be verified on
 the reference machine (RHEL 10.2, GNOME, Wayland). Where automated tests exist, the
 correct claim is **"automated tests green, live verification pending"** -- never
 "works" based on simulated-bus results alone.
@@ -26,10 +26,10 @@ Level mapping:
 |---------|----------|
 | DEBUG   | idle/active watch churn, D-Bus call round-trips |
 | INFO    | service start/stop, slideshow start/stop (with trigger source: idle \| preview), lock performed, config reload applied, the language at start of each program (`[config] language ...`, see `translations.md`), the binaural sound when it plays (`[sound] playing (left 200.0 Hz, right 210.0 Hz, volume 30 %)`, `binaural.md`) |
-| WARNING | D34 sleep/lock race (see below); missing/empty picture folder (3.7); invalid config value replaced with default; a binaural sound that cannot play (`[sound] ... the slideshow goes on without it`, once per start) |
-| ERROR   | a required D-Bus interface is missing at runtime (section 2 of the brief: fail with a clear error, don't guess) |
+| WARNING | the sleep/lock race (see below); missing/empty picture folder (3.7); invalid config value replaced with default; a binaural sound that cannot play (`[sound] ... the slideshow goes on without it`, once per start) |
+| ERROR   | a required D-Bus interface is missing at runtime (fail with a clear error, don't guess) |
 
-## 2. D34 -- sleep/lock race warning
+## 2. Sleep/lock race warning
 
 Condition: `PrepareForSleep(false)` (resume) arrives before the `Lock` round-trip
 (triggered by `PrepareForSleep(true)`) has completed.
@@ -38,12 +38,12 @@ Condition: `PrepareForSleep(false)` (resume) arrives before the `Lock` round-tri
 - Message template:
   `[sleep-inhibit] resume received before lock sequence completed (elapsed=<ms>ms, limit=InhibitDelayMaxSec); session may have resumed unlocked`
 - This logs the race, it does not fix it -- the underlying `InhibitDelayMaxSec`
-  limit (default 5s, D32) is outside this project's control.
+  limit (default 5s) is outside this project's control.
 - Automatable: simulated-bus test with an artificial delay exceeding the configured
-  limit must assert this exact WARNING is emitted. Implementation belongs to CORE-1
-  (software engineer); this document is the acceptance spec.
+  limit must assert this exact WARNING is emitted. Implementation belongs to the service
+  (`sleep_guard.py`); this document is the acceptance spec.
 - Manual-only: the real timing of this race on actual hardware belongs on the
-  manual test list (DOC-2) -- automated tests cannot measure real wall-clock
+  manual test list -- automated tests cannot measure real wall-clock
   suspend/resume timing.
 
 ## 3. Lifecycle events to log
@@ -54,41 +54,41 @@ INFO unless noted:
 - idle watch fired -> slideshow start (`source=idle`)
 - preview requested -> slideshow start (`source=preview`)
 - first input during slideshow -> slideshow stop, plus whether a lock was
-  performed or skipped (grace period), and the trigger source (D11: preview
+  performed or skipped (grace period), and the trigger source (a preview
   never locks)
 - inhibition present at start time -> slideshow not started (INFO: expected
   behaviour, not a fault)
 - inhibition appearing while slideshow is running -> immediate stop; a lock too if the slideshow
   ran for the grace period or longer (the same measure as for input), none within it
-  (D28: this must never suppress the sleep-lock branch)
+  (this must never suppress the sleep-lock branch)
 - `PrepareForSleep(true)` -> stop + lock attempt
-- `PrepareForSleep(false)` / resume -> see D34
+- `PrepareForSleep(false)` / resume -> see section 2
 - session already locked -> no-op (DEBUG, to avoid log spam on repeated checks)
 - missing or empty picture folder -> **WARNING**, service keeps running (3.7)
 - config reload applied -> INFO, naming the changed keys
 - invalid config value rejected -> **WARNING**, naming the key and the fallback used
 
-## 4. Unit file requirements (spec only -- PKG-1 authors the file)
+## 4. Unit file requirements (spec only -- the packaging authors the file)
 
 - `PartOf=graphical-session.target`, `WantedBy=graphical-session.target`
 - `Restart=on-failure` with a bounded `RestartSec` so a crash loop cannot spam
   D-Bus or the journal
 - Must pass `systemd-analyze verify` with zero warnings and zero errors
-- Per D14, the unit file itself is owned by PKG-1 (build engineer); this card
-  (OPS-1) is the review gate and runs `systemd-analyze verify` once PKG-1
-  delivers the file -- it does not author the unit.
+- The unit file itself has one owner, the packaging (build engineer); this
+  document's owner is the review gate and runs `systemd-analyze verify` once the
+  packaging delivers the file -- it does not author the unit.
 
-## 5. Automatable vs. manual-only (D7)
+## 5. Automatable vs. manual-only
 
 Automatable (simulated bus / unit-level, no real session needed):
 - log message structure/content assertions (section 1-3 above)
-- D34 WARNING emission under an artificial delay
-- unit file syntax (`systemd-analyze verify`), once PKG-1 delivers the file
+- sleep/lock race WARNING emission under an artificial delay
+- unit file syntax (`systemd-analyze verify`), once the packaging delivers the file
 
-Manual-only (reference machine, DOC-2):
+Manual-only (reference machine, the manual test list):
 - actual GNOME/Wayland session lifecycle (real idle detection, real lock,
   real multi-monitor behaviour)
-- real timing of the D34 race under the actual `InhibitDelayMaxSec`
+- real timing of the sleep/lock race under the actual `InhibitDelayMaxSec`
 - the actual `journalctl --user -u slideshow-lock.service` output as seen by a
   real user
 

@@ -62,7 +62,7 @@ The slideshow and the lock are the parts the program is for; the sound is a side
 * **The schema.** The service reads the four keys when a slideshow starts. GLib aborts the process at a key the
   installed schema lacks, and the service is what locks, so `Settings` asks the schema first (`_get_with_default`) and
   gives the default for a missing key, as it does for the older boolean keys.
-* **D11.** The preview modules may not name the lock, the session or the bus (`tests/test_preview.py`): `binaural.py`
+* **A preview never locks.** The preview modules may not name the lock, the session or the bus (`tests/test_preview.py`): `binaural.py`
   is scanned like every other module that is not on the lock side, and it passes without an allowance.
 
 ## The preview

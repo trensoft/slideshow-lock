@@ -4,6 +4,9 @@ State machine, sleep guard on its own thread, and the D-Bus adapters, with a fak
 place of the windows. "Simulated bus" in the sense of the acceptance criteria: nothing here is a
 GNOME session, so the claim is "automated tests green, live verification pending".
 
+In a test name, ``d28``: an idle inhibitor never keeps the sleep lock back; ``d34``: a wake before
+the answer of the lock is a WARNING with the elapsed time.
+
 Marked ``spawns_processes`` for the module (it starts ``dbus-daemon``; see ``test_tripwire.py``).
 """
 

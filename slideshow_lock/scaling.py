@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Decode one picture and scale it to a monitor's exact pixel size (CORE-2).
+"""Decode one picture and scale it to a monitor's exact pixel size.
 
 No window and no GTK here: this module only turns a file into a ``Frame``, a block of
 RGB pixels that is shown 1:1 on the monitor. It runs on a worker thread (see
@@ -28,7 +28,7 @@ Geometry (``plan_render``):
 
 A picture that cannot be shown raises ``ImageSkipped`` with a one-line reason. That is
 the contract with the controller: skip, log, go on. The header sniffing of the image
-source (CORE-4) cannot see these cases, so they are handled here:
+source cannot see these cases, so they are handled here:
 
 * a decoder error (deeply damaged PNG, JPEG with a valid header and no image data),
 * a file still being copied: it changed while it was read, it was modified a moment ago,

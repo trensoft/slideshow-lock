@@ -1,6 +1,6 @@
-# Image source (CORE-4)
+# Image source
 
-Module: `slideshow_lock/image_source.py`. No GUI, no drawing, no scaling (CORE-2).
+Module: `slideshow_lock/image_source.py`. No GUI, no drawing, no scaling (those are the preview's).
 It turns the `picture-folder` setting into an ordered, always-current queue of
 displayable images.
 
@@ -32,7 +32,8 @@ becomes empty (`None`). It does not fire for `advance()`.
   header opens the file with `O_NONBLOCK` and checks `fstat`, so a file swapped for
   a FIFO cannot hang the walk; but a hung network mount can still block `open()`
   or `scandir()` in the kernel, and then the whole main loop stands still. Nothing
-  in this module can prevent that (CORE-1 has its own condition for it). The tests of
+  in this module can prevent that (the service keeps its lock before suspend off the main loop for it,
+  `docs/service.md`). The tests of
   the step budget guard the cost budget only: they measure the CPU time of the walking
   thread and, on a fake clock, how much work a step does; they do not see a blocking
   call or a sleep (a step that waits is not busy, and a wall-clock threshold does not
@@ -96,7 +97,7 @@ becomes empty (`None`). It does not fire for `advance()`.
   not eat the journald rate limit.
 - **Deleting what is on screen.** The cursor moves to the image that followed it
   (wrapping to the start). Deleting the last image gives `current() is None` and a
-  `[slideshow-dir]` WARNING, per brief 3.7; it is not an error, and the source
+  `[slideshow-dir]` WARNING; it is not an error, and the source
   recovers when an image returns.
 - **Which files count.** Extension in `IMAGE_EXTENSIONS` (case-insensitive), not
   hidden (no leading `.`), a regular file or a link to one, and a readable file

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 TrenSoft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Image source for the slideshow: folder walk and live folder watching (CORE-4).
+"""Image source for the slideshow: folder walk and live folder watching.
 
-A GUI-independent module. It turns the configured picture folder (the CORE-3
+A GUI-independent module. It turns the configured picture folder (the
 ``picture-folder`` setting) into an ordered, always-current queue of displayable
-images. It does no drawing and no scaling (that is CORE-2).
+images. It does no drawing and no scaling (that is the preview's).
 
 Behaviour in short:
 
@@ -15,14 +15,14 @@ Behaviour in short:
 * The walk runs in small time-boxed steps driven by the GLib main loop, so a
   huge tree never freezes startup: the first image is available after the first
   step, long before the walk finishes.
-* Every walked directory gets one directory monitor (``Gio.FileMonitor``, base
-  repo only, D2). Copied-in or deleted images, and created or removed
+* Every walked directory gets one directory monitor (``Gio.FileMonitor``: GLib
+  from the base repositories only). Copied-in or deleted images, and created or removed
   subfolders, change the queue with no restart. The parent of the root is
   watched too, so a missing folder that appears later is picked up, and a
   deleted root becomes the defined empty state.
 * If the image on screen is deleted, the cursor moves on to the image that
   followed it. If the last image is deleted, ``current()`` is ``None``: a
-  logged ``[slideshow-dir]`` WARNING (brief 3.7), not an error.
+  logged ``[slideshow-dir]`` WARNING, not an error.
 * In random order the same image comes back only after at least ``REPEAT_GAP`` (3) other images
   (fewer in a folder of fewer than four: the largest distance there is); see ``advance``.
 * Hidden files and folders (leading ``.``) are skipped, which also keeps
@@ -30,7 +30,7 @@ Behaviour in short:
 * Non-image files are filtered by extension. A file that has an image extension
   but cannot be read, or whose header is not a known image header, is skipped
   with a WARNING. Header sniffing only: a file that is damaged deeper in is
-  caught by the display layer (CORE-2), which must skip it the same way.
+  caught by the display layer (the preview), which must skip it the same way.
 * Screenshots are left out unless ``show_screenshots`` is true (the "show-screenshots"
   setting, off by default): a folder named like a screenshot folder (``Screenshots`` and its
   translations) is not walked, and a file named like a screenshot is not listed. The test is on
@@ -74,7 +74,7 @@ ORDER_NAME = "name"
 REPEAT_GAP = 3
 
 #: Extensions treated as candidate images. Kept in one place so it can be
-#: trimmed once the display layer's (CORE-2) real loader support is known.
+#: trimmed once the display layer's real loader support is known.
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp"})
 
 #: Folder names (compared case-insensitively) that hold screenshots: the one GNOME Shell makes in
@@ -1046,7 +1046,7 @@ class ImageSource:
             raise ValueError(f"order must be {ORDER_RANDOM!r} or {ORDER_NAME!r}, got {order!r}")
 
 
-# -- settings wiring (CORE-3) ---------------------------------------------------
+# -- settings wiring -------------------------------------------------------------
 
 
 def source_from_settings(settings, **kwargs) -> ImageSource:

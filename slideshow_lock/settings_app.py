@@ -3,9 +3,9 @@
 
 """The settings window as the program starts it: ``slideshow-lock settings``.
 
-The window and the preview code may not name the lock, the session or the bus (D11,
-``tests/test_preview.py``). This module is on the lock side of that line, so it is the one that
-gives the window's Preview button what needs the bus: before the preview opens its windows, the
+The window and the preview code may not name the lock, the session or the bus (a preview never
+locks, ``tests/test_preview.py``). This module is on the lock side of that line, so it is the one
+that gives the window's Preview button what needs the bus: before the preview opens its windows, the
 shell's overview (Super) is closed, as it is before the slideshow of the idle path
 (``GnomeShellOverview``, ``docs/architecture/dbus-state-machine.md``, section 3.7a). The window
 only gets a callback and does not know what it does.
