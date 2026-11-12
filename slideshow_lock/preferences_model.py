@@ -300,7 +300,8 @@ class PreferencesModel:
 
     def folder_view(self) -> FolderView:
         """What the folder field shows. One read of the folder, so a missing folder is logged
-        once (``Settings.get_picture_folder`` warns), not once per line of the window."""
+        once (``Settings.get_picture_folder`` warns), not once per line of the window; and it
+        warns once per missing path, so a refresh of the window does not log it again."""
         folder = self._settings.get_picture_folder()
         default = default_picture_folder()
         if os.path.isdir(folder):

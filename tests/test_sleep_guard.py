@@ -357,6 +357,47 @@ def test_only_exceptions_are_caught_around_the_post_of_the_lock_result():
         r.sleep.fire(True)
 
 
+@pytest.mark.parametrize("error", _POST_ERRORS)
+def test_a_lock_call_and_a_post_of_the_lock_result_that_both_raise_do_not_escape_the_signal(
+    caplog, error
+):
+    """A lock call that raises ends the round trip inside ``_before_sleep``, so the post of the
+    result runs there: its failure must not leave the signal callback either."""
+    r = _rig_whose_second_post_fails(error)
+    r.lock.raises = RuntimeError("bus gone")
+
+    with caplog.at_level(logging.ERROR):
+        r.sleep.fire(True)  # nothing escapes the signal callback
+
+    assert r.lock.lock_calls == 1
+    assert r.sleep.inhibitors[0].released
+    errors = [rec for rec in caplog.records if rec.levelno == logging.ERROR]
+    assert any("bus gone" in rec.getMessage() for rec in errors)
+    posts = [rec for rec in errors if rec.getMessage().startswith("[sleep-inhibit] could not hand")]
+    assert len(posts) == 1 and posts[0].exc_info[1] is error
+    r.run_main()  # only the start reached the main loop
+    assert r.listener.events == ["started"]
+    r.sleep.fire(False)
+    assert r.sleep.held == 1  # the next suspend is guarded
+    r.lock.raises = None
+    r.sleep.fire(True)
+    assert r.lock.lock_calls == 2
+
+
+@pytest.mark.parametrize("error", _POST_ERRORS)
+def test_a_lock_call_that_raises_with_both_posts_failing_does_not_escape_the_signal(error):
+    def post(fn):
+        raise error
+
+    r = Rig(to_main=post)
+    r.lock.raises = RuntimeError("bus gone")
+    r.sleep.fire(True)  # nothing escapes the signal callback
+    assert r.lock.lock_calls == 1
+    assert r.sleep.inhibitors[0].released
+    r.sleep.fire(False)
+    assert r.sleep.held == 1
+
+
 class _ScriptedClock:
     """A clock that raises on the calls whose number (from 1) is in *fail_on*."""
 
