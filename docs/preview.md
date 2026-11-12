@@ -461,9 +461,9 @@ calls (see `docs/preferences.md`); the service has its own controller wiring. Gi
 (section 2.1). If it raises once the controller has its windows (later in the controller's start,
 or while it sets the time limit), it stops the controller before the error goes on, so those
 windows close and the worker thread and the timers are given back: the caller gets no controller
-to do it with. This does not cover `open_monitor_windows()` raising part way, for example in the
-second monitor's `PreviewWindow`: the windows it has already opened are not the controller's yet,
-and they stay open.
+to do it with. If `open_monitor_windows()` itself raises part way, for example in the second
+monitor's `PreviewWindow`, the windows it has already opened are not the controller's yet: it
+closes them itself before the error goes on.
 
 ## 7. Facts measured while building it
 
