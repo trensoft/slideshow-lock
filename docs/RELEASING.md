@@ -167,13 +167,15 @@ log of the build in stage 1 is cut off) has, each as a line of its own, `START-G
 of 1.0.11 (`GLibUnix` has no `signal_add`), after the install and the import went through. A gate
 that failed for another reason (a build error, no network, `gi` missing, a step (a) or (b) that
 fails, a (c) that fails with another error) is not the proof, and the control is red. The workflow
-is `.github/workflows/negative-control.yml`, a file of its own and run by hand only ("Run workflow",
-`workflow_dispatch`): it leaves no check named `start gate (<chroot>)` on the commit, so
-`verify_checks.sh` has nothing extra to count. It runs the gate scripts of the ref against the tree
+is `.github/workflows/negative-control.yml`, a file of its own. It runs on a pull request that
+changes `tools/start_gate/**` or one of the two start gate workflows (a `paths` filter, no `if`), so
+the control runs when the gate changes, and by hand ("Run workflow", `workflow_dispatch`). It leaves
+no check named `start gate (<chroot>)` on the commit, so `verify_checks.sh` has nothing extra to
+count; it is not a required check, as a pull request that does not touch the gate does not start it. It runs the gate scripts of the ref against the tree
 of the commit `adb4c224d32bebbda3a4f76a20d41ce9a7d338b6`, the commit of the tag `v1.0.11`, by its
 SHA and not by the tag (a tag can be moved to a tree that passes, and the control would call the gate
-soft), on the image of `epel-10`. Start it when the gate is changed and before the first tag that
-depends on a changed gate.
+soft), on the image of `epel-10`. A pull request that changes the gate starts it by itself; before the
+first tag that depends on a changed gate, look at its last run on the pull request that changed the gate.
 
 The gate can be run by hand: `START_GATE_ENGINE=podman tools/start_gate/start_gate.sh
 registry.fedoraproject.org/fedora:43 [TREE]`. It needs podman or docker and the network, so the tests

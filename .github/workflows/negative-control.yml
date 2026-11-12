@@ -1,11 +1,19 @@
 name: Negative control of the start gate
 
-# Run by hand ("Run workflow"): the gate scripts of this ref against the tree of 1.0.11, the release
-# that went out with the start-up error, on the image of epel-10. Green only when the gate FAILS there
-# in step (c) with the error of 1.0.11 (tools/start_gate/negative_control.sh). It is a file of its own
-# so that the run by hand leaves no check named "start gate (<chroot>)" on the commit: that name is
-# what tools/start_gate/verify_checks.sh counts before a tag, a skipped job included.
+# The gate scripts of this ref against the tree of 1.0.11, the release that went out with the
+# start-up error, on the image of epel-10. Green only when the gate FAILS there in step (c) with the
+# error of 1.0.11 (tools/start_gate/negative_control.sh). It runs on a pull request that changes the
+# gate (the paths below), so the control runs exactly when the gate changes; "Run workflow" starts it
+# by hand where the token may. It is a file of its own so that its run leaves no check named
+# "start gate (<chroot>)" on the commit: that name is what tools/start_gate/verify_checks.sh counts
+# before a tag, a skipped job included. It is not a required check: a pull request that does not
+# touch the gate does not start it.
 on:
+  pull_request:
+    paths:
+      - tools/start_gate/**
+      - .github/workflows/start-gate.yml
+      - .github/workflows/negative-control.yml
   workflow_dispatch:
 
 # The job only reads the repository: no write scope for the token.
