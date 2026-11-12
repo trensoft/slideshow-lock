@@ -308,7 +308,11 @@ def test_start_gate_wants_a_tree_with_the_copr_makefile(box):
 # signal watch fails with the error that 1.0.11 shipped with
 A_PASS = "START-GATE a PASS version 1.2.3"
 B_PASS = "START-GATE b PASS ok"
-C_FAIL = "START-GATE c FAIL AttributeError: 'GLibUnix' object has no attribute 'signal_add'"
+# the line of the real run on the tree of 1.0.11 (EL10 and Fedora 43), as pygobject words it
+C_FAIL = (
+    "START-GATE c FAIL AttributeError: "
+    "'gi.repository.GLibUnix' object has no attribute 'signal_add'"
+)
 RESULT_FAIL = "START-GATE RESULT FAIL x sha256 y"
 
 
@@ -376,6 +380,9 @@ def test_the_control_proves_nothing_when_the_gate_fails_for_another_reason(contr
         "START-GATE c FAIL AttributeError: module 'slideshow_lock.loop' has no attribute 'x'",
         "START-GATE c FAIL AssertionError: no signal arrived",  # the probe's own failure
         "START-GATE c FAIL OSError: signal_add",  # signal_add, but not the AttributeError
+        # an AttributeError that only has the word in it: the probe or the loop module lost a name
+        "START-GATE c FAIL AttributeError: module 'slideshow_lock.loop' has no attribute "
+        "'unix_signal_add'",
         "START-GATE c FAIL",  # no reason at all
     ],
 )
@@ -415,6 +422,48 @@ def test_the_control_wants_every_line_of_stage_2_as_a_line_of_its_own(control, w
     lines[which] = prefix + lines[which]
     result = control({"check.sh": 1}, stage2(*lines))
     assert result.returncode == 1, result.stdout
+
+
+@pytest.mark.parametrize("which", range(4), ids=["a", "b", "c", "summary"])
+def test_the_control_does_not_count_the_lines_of_the_build_log(control, which):
+    """Only the output of stage 2 counts. The build log (stage 1) has all four lines, and stage 2
+    lacks one of them: the line is not taken from stage 1."""
+    lines = [A_PASS, B_PASS, C_FAIL, RESULT_FAIL]
+    stage2_lines = lines[:which] + lines[which + 1 :]
+    result = control({"check.sh": 1}, {"build.sh": "\n".join(lines), **stage2(*stage2_lines)})
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL FAIL" in result.stdout
+
+
+def test_the_control_is_red_when_all_four_lines_are_in_stage_1_and_stage_2_only_fails(control):
+    result = control(
+        {"check.sh": 1},
+        {"build.sh": "\n".join([A_PASS, B_PASS, C_FAIL, RESULT_FAIL]), **stage2(RESULT_FAIL)},
+    )
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+def test_the_control_is_red_when_stage_1_fails_and_its_log_has_the_four_lines(control):
+    """Stage 1 ends with 1: stage 2 is not started (the gate stops), and the log of the build has
+    the lines of a failed gate. There is no stage 2 to read them from."""
+    log = "\n".join([A_PASS, B_PASS, C_FAIL, RESULT_FAIL])
+    result = control({"build.sh": 1}, {"build.sh": log})
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+def test_the_control_passes_with_the_lines_of_stage_2_even_if_stage_1_printed_one_of_them(control):
+    """A line of the build log that repeats a line of stage 2 does no harm to a real proof."""
+    result = control({"check.sh": 1}, {"build.sh": A_PASS, **FAIL_C})
+    assert result.returncode == 0, result.stdout
+
+
+def test_the_control_runs_the_gate_on_the_tree_it_is_given(box, control):
+    """The tree is the tree of 1.0.11: it is mounted as /src of stage 1, read only. A control that
+    left the tree out would run the gate on its own checkout, and the gate would pass."""
+    control({"check.sh": 1}, FAIL_C)
+    assert f"-v {box.root / 'tree'}:/src:ro" in box.calls()[0]
 
 
 # ---- the probes: a failed step is the exit status 1 ------------------------------------------

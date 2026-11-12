@@ -160,9 +160,10 @@ missing check at all is a setting of the repository (a required status check on 
 tag rule), which is a decision of the maintainer's side and is not made by this file.
 
 The negative control is `tools/start_gate/negative_control.sh IMAGE TREE`: the gate on the tree of
-1.0.11, which must fail as 1.0.11 does. It is green only when the output of stage 2 has, each as a
-line of its own, `START-GATE a PASS`, `START-GATE b PASS`, `START-GATE c FAIL AttributeError: ...
-signal_add` and `START-GATE RESULT FAIL`: the gate failed on that tree, on step (c), for the reason
+1.0.11, which must fail as 1.0.11 does. It is green only when the output of stage 2 (only that: the
+log of the build in stage 1 is cut off) has, each as a line of its own, `START-GATE a PASS`,
+`START-GATE b PASS`, `START-GATE c FAIL AttributeError: ... attribute 'signal_add'` and
+`START-GATE RESULT FAIL`: the gate failed on that tree, on step (c), for the reason
 of 1.0.11 (`GLibUnix` has no `signal_add`), after the install and the import went through. A gate
 that failed for another reason (a build error, no network, `gi` missing, a step (a) or (b) that
 fails, a (c) that fails with another error) is not the proof, and the control is red. The workflow
