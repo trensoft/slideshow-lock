@@ -25,6 +25,11 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.13" date="2026-11-12">
+      <description translate="no">
+        <p>Fix the stutter of the binaural sound: the tones are no longer live sources, so the clock of the sound output sets the pace.</p>
+      </description>
+    </release>
     <release version="1.0.12" date="2026-11-12">
       <description translate="no">
         <p>Fix the start on EL10 and Fedora 43, where GLibUnix has no signal_add: the Unix signal watch falls back to GLib.unix_signal_add.</p>
