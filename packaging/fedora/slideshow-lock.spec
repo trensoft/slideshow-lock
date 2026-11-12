@@ -11,7 +11,7 @@
 # (rpmbuild --with tests turns it on). %%check still imports every module and validates the installed files.
 
 Name:           slideshow-lock
-Version:        1.0.13
+Version:        1.0.14
 Release:        1%{?dist}
 Summary:        Idle slideshow screensaver for GNOME on Wayland that locks on input
 License:        GPL-3.0-or-later AND CC-BY-SA-4.0
@@ -168,6 +168,14 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{app_id}.meta
 %{_datadir}/%{name}
 
 %changelog
+* Thu Nov 12 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.14-1
+- Fix the click at the end of the binaural sound: after the fade-out it plays on at zero for 0.3 seconds,
+  so the sound output plays out what it holds
+- A preview that fails to start closes its windows and gives back its thread, timers and sound; when
+  the window for one monitor cannot be made, the windows already open on the other monitors close too
+- A missing picture folder is warned about once in the log, not at every refresh of the settings window
+- Documentation: the rules are written out where internal decision and card numbers stood
+
 * Thu Nov 12 2026 TrenSoft <trensoft@fedoraproject.org> - 1.0.13-1
 - Fix the stutter of the binaural sound: the tones are no longer live sources, so the clock of the sound
   output sets the pace
