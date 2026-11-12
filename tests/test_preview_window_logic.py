@@ -794,3 +794,53 @@ def test_the_move_tick_leaves_the_drawing_to_a_running_transition(monkeypatch):
     window._end_transition()
     assert window._on_move_tick(None, _Clock(0.12)) == GLib.SOURCE_CONTINUE
     assert len(draws) == 2  # the transition is over: the move draws again
+
+
+class _Monitors:
+    def __init__(self, count):
+        self.items = [f"monitor {i}" for i in range(count)]
+
+    def get_n_items(self):
+        return len(self.items)
+
+    def get_item(self, i):
+        return self.items[i]
+
+
+def monitor_windows(monkeypatch, count, broken_on=None):
+    """``open_monitor_windows`` on *count* monitors; the window of monitor *broken_on* raises."""
+    made = []
+
+    class Window:
+        def __init__(self, monitor):
+            if monitor == f"monitor {broken_on}":
+                raise RuntimeError("no window on this monitor")
+            self.monitor, self.closed = monitor, 0
+            made.append(self)
+
+        def close(self):
+            self.closed += 1
+
+    display = type("Display", (), {"get_monitors": lambda self: _Monitors(count)})()
+    monkeypatch.setattr(preview_window.Gdk.Display, "get_default", staticmethod(lambda: display))
+    monkeypatch.setattr(preview_window, "PreviewWindow", Window)
+    return made
+
+
+@pytest.mark.parametrize("count", [1, 3])
+def test_one_window_opens_on_every_monitor_and_none_is_closed(monkeypatch, count):
+    made = monitor_windows(monkeypatch, count)
+    windows = preview_window.open_monitor_windows()
+    assert windows == made
+    assert [w.monitor for w in windows] == [f"monitor {i}" for i in range(count)]
+    assert [w.closed for w in windows] == [0] * count
+
+
+@pytest.mark.parametrize("count, broken_on", [(2, 1), (3, 1), (3, 2), (2, 0)])
+def test_a_window_that_cannot_be_made_closes_the_ones_already_open(monkeypatch, count, broken_on):
+    """The caller gets the error and no list: a window opened before it would stay open."""
+    made = monitor_windows(monkeypatch, count, broken_on)
+    with pytest.raises(RuntimeError, match="no window on this monitor"):
+        preview_window.open_monitor_windows()
+    assert [w.monitor for w in made] == [f"monitor {i}" for i in range(broken_on)]
+    assert [w.closed for w in made] == [1] * broken_on  # each once; none after the broken one

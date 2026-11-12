@@ -628,7 +628,18 @@ class PreviewWindow:
 
 
 def open_monitor_windows() -> List[Any]:
-    """One ``PreviewWindow`` per monitor of the default display. GTK must be initialised."""
+    """One ``PreviewWindow`` per monitor of the default display. GTK must be initialised.
+
+    If one of them cannot be made, the ones already open are closed before the error goes on:
+    the caller gets no list to close them with."""
     display = Gdk.Display.get_default()
     monitors = display.get_monitors()
-    return [PreviewWindow(monitors.get_item(i)) for i in range(monitors.get_n_items())]
+    windows: List[Any] = []
+    try:
+        for i in range(monitors.get_n_items()):
+            windows.append(PreviewWindow(monitors.get_item(i)))
+    except Exception:
+        for window in windows:
+            window.close()
+        raise
+    return windows
