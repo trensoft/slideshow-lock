@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import gi
 
@@ -124,6 +124,7 @@ class Settings:
         self._settings = Gio.Settings.new(APP_ID)
         self._changed_handlers: List[int] = []
         self._missing_logged: set = set()
+        self._missing_folder_logged: Optional[str] = None  # the missing folder last warned about
 
     # -- live reload (acceptance criterion 1) ------------------------------
 
@@ -289,14 +290,19 @@ class Settings:
     def get_picture_folder(self) -> str:
         """Return the configured picture folder, resolving the XDG default.
 
-        A missing folder is not an error (brief 3.7): this logs a single
-        WARNING with the "[slideshow-dir]" event tag and still returns the
-        path, so the caller (the slideshow layer) keeps running and simply
-        finds no images.
+        A missing folder is not an error (brief 3.7): this logs a WARNING with
+        the "[slideshow-dir]" event tag and still returns the path, so the
+        caller (the slideshow layer) keeps running and simply finds no images.
+        The warning is logged once per missing path, not at every read (the
+        settings window reads the folder at every refresh); a path that is
+        there again and then missing again is logged again.
         """
         raw = self._settings.get_string(KEY_PICTURE_FOLDER)
         path = raw if raw else default_picture_folder()
-        if not os.path.isdir(path):
+        if os.path.isdir(path):
+            self._missing_folder_logged = None
+        elif path != self._missing_folder_logged:
+            self._missing_folder_logged = path
             _LOG.warning(
                 "[slideshow-dir] picture folder '%s' is missing, slideshow will not start, "
                 "service keeps running",

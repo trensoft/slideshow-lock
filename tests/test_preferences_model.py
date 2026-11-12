@@ -7,6 +7,7 @@ are the ones that matter: every rejected value is checked to leave the stored on
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
@@ -724,6 +725,16 @@ def test_a_folder_that_does_not_exist_is_saved_and_the_note_says_so(model, tmp_p
     assert "does not exist yet" in model.folder_view().note
     missing.mkdir()
     assert "does not exist" not in model.folder_view().note
+
+
+def test_a_missing_folder_is_logged_once_however_often_the_window_shows_it(model, tmp_path, caplog):
+    """The window refreshes at every change; the warning for the missing folder is not repeated,
+    while the note under the field says it every time."""
+    with caplog.at_level(logging.WARNING, logger="slideshow_lock.settings"):
+        assert model.set_folder(str(tmp_path / "later")).ok  # its read-back is the first read
+        for _refresh in range(10):
+            assert "does not exist yet" in model.folder_view().note
+    assert sum("[slideshow-dir]" in m for m in caplog.messages) == 1
 
 
 def test_whitespace_around_the_path_is_dropped_and_the_path_is_tidied(model, tmp_path):
