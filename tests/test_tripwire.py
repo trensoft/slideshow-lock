@@ -283,8 +283,15 @@ OPT_OUTS = {
 
 
 #: Whole files that start ``dbus-daemon`` for every test in them (a fake desktop on private
-#: buses, ``tests/fake_dbus.py``). A new file here is a decision, made here.
-OPT_OUT_FILES = {"test_control_dbus.py", "test_dbus_adapters.py", "test_service_dbus.py"}
+#: buses, ``tests/fake_dbus.py``), or run the scripts of the start gate with stand-ins for the
+#: commands they call (``tests/start_gate_helpers.py``). A new file here is a decision, made here.
+OPT_OUT_FILES = {
+    "test_control_dbus.py",
+    "test_dbus_adapters.py",
+    "test_service_dbus.py",
+    "test_start_gate_run.py",
+    "test_start_gate_verify.py",
+}
 
 
 def test_only_the_known_tests_stand_the_tripwire_down(request):
