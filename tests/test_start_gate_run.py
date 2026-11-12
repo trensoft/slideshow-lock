@@ -189,7 +189,34 @@ def test_build_installs_the_second_round_of_build_requirements_on_code_11(box, b
     assert any("buildreqs.nosrc.rpm" in c and c.startswith("dnf builddep") for c in calls)
 
 
-@pytest.mark.parametrize("codes, expected", [("1", 1), ("2", 2), ("11 1", 1), ("11 11", 11)])
+@pytest.mark.parametrize("codes, rounds", [("11 11 0", 3), ("11 11 11 0", 4), ("11 11 11 11 0", 5)])
+def test_build_goes_on_while_rpmbuild_asks_for_build_requirements(box, build, codes, rounds):
+    """EL10 asks twice (pyproject-rpm-macros, then setuptools): one round more is not enough."""
+    result = build(STUB_RPMBUILD_RCS=codes)
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = box.calls()
+    assert len([c for c in calls if c.startswith("rpmbuild")]) == rounds
+    # builddep of the build requirements once after every code 11
+    nosrc = [c for c in calls if c.startswith("dnf builddep") and "buildreqs.nosrc.rpm" in c]
+    assert len(nosrc) == rounds - 1
+    assert [p.name for p in (box.out / "rpm").iterdir()] == [f"{NEVRA}.rpm"]
+
+
+def test_build_fails_loudly_when_rpmbuild_still_asks_after_the_last_round(box, build):
+    # the build never ends: the limit is the end, with the code 11 and a message, and no RPM
+    stale = box.out / "build" / "RPMS" / "noarch"
+    stale.mkdir(parents=True)
+    (stale / f"{NEVRA}.rpm").write_bytes(b"left over")
+    result = build(STUB_RPMBUILD_RCS="11 " * 20)
+    assert result.returncode == 11
+    assert "still asks for build requirements after 5 rounds" in result.stderr
+    calls = box.calls()
+    assert len([c for c in calls if c.startswith("rpmbuild")]) == 5
+    assert len([c for c in calls if c.startswith("dnf builddep") and "buildreqs" in c]) == 4
+    assert not list((box.out / "rpm").iterdir())
+
+
+@pytest.mark.parametrize("codes, expected", [("1", 1), ("2", 2), ("11 1", 1), ("11 11 1", 1)])
 def test_build_ends_with_the_failure_of_rpmbuild_and_copies_nothing(box, build, codes, expected):
     # an RPM left in the build directory (an earlier run) must not be taken for the result
     stale = box.out / "build" / "RPMS" / "noarch"

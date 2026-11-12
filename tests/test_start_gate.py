@@ -95,10 +95,13 @@ def test_check_fails_without_rpm_and_for_a_wrong_tag():
 
 def test_build_does_not_swallow_a_failure_of_rpmbuild():
     """rpmbuild ends with 11 when %generate_buildrequires names more build requirements: that code
-    is the only one that is answered with a second round; any other non-zero code ends the stage."""
+    is the only one that is answered with another round, and the rounds are limited; any other
+    non-zero code ends the stage."""
     text = "\n".join(_code("build.sh"))
     assert 'rpmbuild --rebuild --define "_topdir /out/build" "$srpm" || rc=$?' in text
-    assert '[ "$rc" -eq 11 ]' in text
+    assert '[ "$rc" -eq 11 ] || break' in text
+    assert 'if [ "$round" -ge "$max_rounds" ]; then' in text
+    assert "max_rounds=5" in text
     assert '[ "$rc" -ne 0 ]' in text and 'exit "$rc"' in text
 
 

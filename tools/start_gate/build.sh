@@ -22,14 +22,24 @@ make -f /src/.copr/Makefile srpm outdir=/out/srpm
 srpm=$(ls /out/srpm/*.src.rpm)
 gate_dnf builddep "$srpm"
 
-# %generate_buildrequires (pyproject) names more build requirements once the first are installed:
-# rpmbuild stops with 11 and a .buildreqs.nosrc.rpm, which is installed with builddep, then once more
-rc=0
-rpmbuild --rebuild --define "_topdir /out/build" "$srpm" || rc=$?
-if [ "$rc" -eq 11 ]; then
+# %generate_buildrequires (pyproject) names more build requirements once the first are installed,
+# and on EL10 it does so in more than one round (pyproject-rpm-macros first, then setuptools):
+# rpmbuild stops with 11 and a .buildreqs.nosrc.rpm, which is installed with builddep, and rpmbuild
+# runs again. The rounds are limited: a build that still asks after the last one fails, loudly.
+max_rounds=5
+round=1
+while true; do
+    rc=0
+    rpmbuild --rebuild --define "_topdir /out/build" "$srpm" || rc=$?
+    [ "$rc" -eq 11 ] || break
+    if [ "$round" -ge "$max_rounds" ]; then
+        echo "build.sh: rpmbuild still asks for build requirements after $max_rounds rounds" >&2
+        exit 11
+    fi
     gate_dnf builddep /out/build/SRPMS/*.buildreqs.nosrc.rpm
-    rpmbuild --rebuild --define "_topdir /out/build" "$srpm"
-elif [ "$rc" -ne 0 ]; then
+    round=$((round + 1))
+done
+if [ "$rc" -ne 0 ]; then
     exit "$rc"
 fi
 

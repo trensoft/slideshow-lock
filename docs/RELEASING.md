@@ -99,7 +99,9 @@ builds for, before the tag.
 What it does, per leg (`tools/start_gate/start_gate.sh IMAGE [TREE]`, two containers of the image):
 
 1. Stage 1 (`build.sh`): `.copr/Makefile` makes the source RPM from the commit (the file COPR runs),
-   `dnf builddep` installs the build requirements, `rpmbuild --rebuild` makes the RPM.
+   `dnf builddep` installs the build requirements, `rpmbuild --rebuild` makes the RPM. When
+   `rpmbuild` ends with 11 (`%generate_buildrequires` names more build requirements, on EL10 in two
+   rounds), they are installed and it runs again, at most 5 rounds, then the stage fails.
 2. Stage 2 (`check.sh`), in a fresh container that has neither the tree nor the build tools: `dnf`
    installs the RPM with its dependencies and without the weak ones, then, from the installed copy
    (`python3 -I`, outside the tree):
