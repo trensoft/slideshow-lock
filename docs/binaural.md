@@ -10,7 +10,7 @@ the slideshow starts, so a change is heard at the next one.
 | Beat presets | delta 4 Hz, theta 6 Hz, alpha 10 Hz (the default), beta 14 Hz |
 | Carrier | 100 to 500 Hz (200 by default); the right channel is the carrier plus the beat |
 | Volume | 0 to 100 percent (30 by default), the level the fade-in ends at |
-| Fade | linear in amplitude: 0 -> the volume in 1.5 s at the start, the level now -> 0 in 1.5 s at the end |
+| Fade | linear in amplitude: 0 -> the volume in 1.5 s at the start, the level now -> 0 in 1.5 s at the end, then 0.3 s at 0 |
 
 ## How it is made
 
@@ -25,20 +25,30 @@ the slideshow starts, so a change is heard at the next one.
 * **The tones are not live** (`audiotestsrc is-live=false`, `binaural.LIVE_TONES`): they are made as fast as the sink
   takes them, and the sink paces the pipeline with its own clock. 1.0.11 and 1.0.12 had live tones, and the sound
   stuttered now and then (Attila, RHEL 10). Measured 2026-11-12 in a CentOS Stream 10 root (GStreamer 1.26.7, PipeWire
-  1.4.11, `pipewire-pulse` with a null sink, `autoaudiosink` -> `pulsesink`), 120 s each, before -> after:
-  "correct clock skew" 34 -> 0, `audiomixer` late 50 -> 0, dropped 44 -> 0. Two causes. With live tones the sink cannot
-  give the pipeline its clock in time (its ring buffer is not up yet when the clock is chosen), so it follows the system
-  clock and jumps 20 ms in its buffer every 9 s or so, a click in both ears at once. And `audiomixer` (an aggregator,
-  `latency` 0) does not wait for a live tone that is late: a tone whose thread is held up for a moment (a busy machine,
-  a picture change) loses that piece, a hole of silence in one ear (`tests/test_binaural.py` holds one tone up for 0.3 s
-  and counts the silence). Not live, the mixer waits and the sink's buffer (200 ms) covers the wait. The cost: a volume
-  change is heard up to that buffer later, which the 1.5 s fades do not notice.
+  1.4.11, `pipewire-pulse` with a null sink, `autoaudiosink` -> `pulsesink`), 120 s each, before -> after: "correct
+  clock skew" 34 -> 0, `audiomixer` late 50 -> 0, dropped 44 -> 0; the sink's underflows went 1 -> 6 in that pair, which
+  is the machine, not the tones. The old and the new player at the same time, each on its own null sink so that both had
+  the same load, in two previews in one headless mutter (load 12.7 to 20.3 on 4 CPUs), 120 s: skew 94 -> 0, late
+  90 -> 0, dropped 38 -> 0, underflows 7 and 8, at the same moments in both; with only the sound: skew 2 -> 0, late,
+  dropped and underflows 0 in both. Two causes. With live tones the sink cannot give the pipeline its clock in time (its
+  ring buffer is not up yet when the clock is chosen), so it follows the system clock and jumps 20 ms in its buffer
+  every 9 s or so, a click in both ears at once. And `audiomixer` (an aggregator, `latency` 0) does not wait for a live
+  tone that is late: a tone whose thread is held up for a moment (a busy machine, a picture change) loses that piece, a
+  hole of silence in one ear (`tests/test_binaural.py` holds one tone up for 0.3 s and counts the silence). Not live,
+  the mixer waits and the sink's buffer (200 ms) covers the wait. The cost: a volume change is heard up to that buffer
+  later, which the 1.5 s fades do not notice.
 * **A thread of its own.** GStreamer is touched only on the worker thread of `BinauralPlayer`. `start`, `stop` and
   `close` only queue a command and return at once, so a sound device that hangs cannot stop the main loop, and the
   lock is made on the main loop.
 * **The ramp** is `BinauralPlayer.pump(now)`: the worker calls it (every 20 ms while a ramp runs), a test calls it with a
   time of its own. The fade-in counts from the moment the pipeline is up; a stop in the middle of a fade-in fades out
   from where it is; a start in the middle of a fade-out turns it up again on the same pipeline.
+* **The tail.** After the fade-out the pipeline goes on at 0 for `binaural.TAIL_SECONDS` (0.3 s), and only then is it
+  taken down, so that the sound output plays out what it still holds (its buffer, 200 ms) and throws away only silence.
+  Before, it was taken down at once, and the fade-out ended in a click. Measured 2026-11-12 in the same root (the peak
+  of the last 5 ms of the sound in a capture of the null sink's monitor), volume 0.3, three runs each: the sound was cut
+  off at 0.022 to 0.026, with the tail it ends at 0.001 to 0.002, the last step of the ramp. `stop` answers the fade and
+  the tail (1.8 s), which is how long the preview keeps the application alive before it closes the sound.
 
 ## The lock never depends on the sound
 
