@@ -9,6 +9,8 @@ is what ``tools/wayland-smoke`` checks on a real compositor.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from gi.repository import GLib
 
@@ -807,8 +809,9 @@ class _Monitors:
         return self.items[i]
 
 
-def monitor_windows(monkeypatch, count, broken_on=None):
-    """``open_monitor_windows`` on *count* monitors; the window of monitor *broken_on* raises."""
+def monitor_windows(monkeypatch, count, broken_on=None, close_broken_on=None):
+    """``open_monitor_windows`` on *count* monitors; the window of monitor *broken_on* raises,
+    the ``close()`` of the window of monitor *close_broken_on* too."""
     made = []
 
     class Window:
@@ -820,6 +823,8 @@ def monitor_windows(monkeypatch, count, broken_on=None):
 
         def close(self):
             self.closed += 1
+            if self.monitor == f"monitor {close_broken_on}":
+                raise ValueError("close of this window failed")
 
     display = type("Display", (), {"get_monitors": lambda self: _Monitors(count)})()
     monkeypatch.setattr(preview_window.Gdk.Display, "get_default", staticmethod(lambda: display))
@@ -844,3 +849,15 @@ def test_a_window_that_cannot_be_made_closes_the_ones_already_open(monkeypatch, 
         preview_window.open_monitor_windows()
     assert [w.monitor for w in made] == [f"monitor {i}" for i in range(broken_on)]
     assert [w.closed for w in made] == [1] * broken_on  # each once; none after the broken one
+
+
+def test_a_window_that_cannot_be_closed_leaves_neither_the_others_open_nor_its_error(
+    monkeypatch, caplog
+):
+    """The caller gets the error that stopped the opening, not the one of a close after it."""
+    made = monitor_windows(monkeypatch, 3, broken_on=2, close_broken_on=0)
+    with caplog.at_level(logging.ERROR, logger=preview_window.__name__):
+        with pytest.raises(RuntimeError, match="no window on this monitor"):
+            preview_window.open_monitor_windows()
+    assert [w.closed for w in made] == [1, 1]
+    assert [r.exc_info[0] for r in caplog.records] == [ValueError]

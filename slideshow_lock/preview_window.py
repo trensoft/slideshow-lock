@@ -640,6 +640,9 @@ def open_monitor_windows() -> List[Any]:
             windows.append(PreviewWindow(monitors.get_item(i)))
     except Exception:
         for window in windows:
-            window.close()
+            try:
+                window.close()
+            except Exception:
+                _LOG.exception("[slideshow] closing a preview window failed")
         raise
     return windows
