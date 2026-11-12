@@ -25,6 +25,11 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.14" date="2026-11-12">
+      <description translate="no">
+        <p>The binaural sound no longer ends in a click. A preview that fails to start closes all of its windows, on every monitor, and a missing picture folder is warned about once in the log, not at every refresh of the settings window.</p>
+      </description>
+    </release>
     <release version="1.0.13" date="2026-11-12">
       <description translate="no">
         <p>Fix the stutter of the binaural sound: the tones are no longer live sources, so the clock of the sound output sets the pace.</p>
