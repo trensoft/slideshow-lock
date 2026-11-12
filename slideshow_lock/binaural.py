@@ -65,6 +65,15 @@ DEFAULT_VOLUME_PERCENT = 30
 #: The sink of the real pipeline. ``autoaudiosink`` picks the desktop's own sound output.
 DEFAULT_SINK = "autoaudiosink"
 
+#: The tones are not live (``audiotestsrc is-live=false``): they are made as fast as the sink takes
+#: them, and the sink paces the pipeline with its own clock. With live tones (1.0.11 and 1.0.12)
+#: the sound stuttered, measured 2026-11-12 on CentOS Stream 10 with pipewire-pulse and a null
+#: sink: the sink could not give the pipeline its clock in time, so it followed the system clock
+#: and jumped 20 ms in its buffer every 9 s or so ("correct clock skew"); and ``audiomixer`` (an
+#: aggregator, latency 0) let no tone be late, so a tone whose thread was held up for a moment
+#: (a picture change, Ken Burns) lost that piece ("Dropped"): a hole of silence in one ear.
+LIVE_TONES = False
+
 #: Elements the real pipeline needs apart from the sink, with the package that has them.
 REQUIRED_ELEMENTS = {
     "audiotestsrc": "gstreamer1-plugins-base",
@@ -140,7 +149,7 @@ def fade_level(start: float, end: float, elapsed: float, seconds: float = FADE_S
 
 
 def pipeline_description(
-    left_hz: float, right_hz: float, sink: str = DEFAULT_SINK, live: bool = True
+    left_hz: float, right_hz: float, sink: str = DEFAULT_SINK, live: bool = LIVE_TONES
 ) -> str:
     """The ``gst_parse_launch`` text: the left tone to the left channel only, the right tone to the
     right channel only, both through one ``volume`` named ``level``, then *sink*."""
@@ -166,7 +175,7 @@ class GstToneBackend:
     """The real pipeline. ``open`` raises if the tone cannot be played; every method may block
     (the device is out there), which is why the player calls them from its worker thread only."""
 
-    def __init__(self, sink: str = DEFAULT_SINK, live: bool = True) -> None:
+    def __init__(self, sink: str = DEFAULT_SINK, live: bool = LIVE_TONES) -> None:
         self._sink = sink
         self._live = live
         self._pipeline = None
