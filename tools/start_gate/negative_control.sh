@@ -6,9 +6,10 @@
 #   IMAGE  the image of a leg where 1.0.11 is known to fail: quay.io/centos/centos:stream10 (epel-10)
 #   TREE   a git checkout of the commit of the tag v1.0.11 (adb4c224d32bebbda3a4f76a20d41ce9a7d338b6)
 # Exit status 0 only when start_gate.sh ran both stages and the output of stage 2, and only that, has,
-# each as a line of its own: "START-GATE a PASS" and "START-GATE b PASS" (the install and the import
-# went through), "START-GATE c FAIL AttributeError: ... attribute 'signal_add'" (the signal watch
-# that 1.0.11 broke: GLibUnix has no signal_add on EL10) and the summary "START-GATE RESULT FAIL".
+# each as a line of its own, in this order: "START-GATE a PASS" and "START-GATE b PASS" (the install
+# and the import went through), "START-GATE c FAIL AttributeError: ... attribute 'signal_add'" (the
+# signal watch that 1.0.11 broke: GLibUnix has no signal_add on EL10) and the summary "START-GATE
+# RESULT FAIL".
 # A gate that passes is soft (exit 1).
 # A gate that stopped before stage 2 ended, or failed for another reason (no network, a build error,
 # a step (c) that fails with another error, a step before (c) that fails), proves nothing and is not
@@ -35,10 +36,15 @@ stage2=$(mktemp)
 trap 'rm -f "$log" "$stage2"' EXIT
 marker="== stage 2: install and start it in a clean $image"
 awk -v marker="$marker" '$0 == marker { found = 1; next } found' "$log" > "$stage2"
-if grep -q '^START-GATE RESULT FAIL' "$stage2" \
-    && grep -q '^START-GATE a PASS' "$stage2" \
-    && grep -q '^START-GATE b PASS' "$stage2" \
-    && grep -q "^START-GATE c FAIL AttributeError: .*attribute 'signal_add'" "$stage2"; then
+# The four lines come in the order the gate prints them: a, b, c, the summary (a step that ran first
+# is not a line that came later). Another line may stand between them (d).
+c_line="^START-GATE c FAIL AttributeError: .*attribute 'signal_add'"
+if awk -v c_line="$c_line" '
+    !a && /^START-GATE a PASS/ { a = 1; next }
+    a && !b && /^START-GATE b PASS/ { b = 1; next }
+    b && !c && $0 ~ c_line { c = 1; next }
+    c && /^START-GATE RESULT FAIL/ { r = 1 }
+    END { exit !r }' "$stage2"; then
     echo "NEGATIVE-CONTROL PASS: the gate failed on $tree in step (c) with the error of 1.0.11, as it must"
     exit 0
 fi

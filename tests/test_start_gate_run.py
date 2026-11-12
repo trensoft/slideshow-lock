@@ -11,6 +11,7 @@ of the RPM does not pass. A change that makes the gate soft fails one of these t
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import sys
 
 import pytest
@@ -181,6 +182,23 @@ def test_build_makes_the_rpm_and_copies_it_out(box, build):
     assert any(call.startswith("dnf builddep") and call.endswith(".src.rpm") for call in calls)
 
 
+def _build_steps(box, calls):
+    """The builddep and rpmbuild calls of build.sh, in order, the output directory shown as OUT."""
+    return [
+        c.replace(str(box.out), "OUT") for c in calls if c.startswith(("dnf builddep", "rpmbuild"))
+    ]
+
+
+def _expected_steps(box, rounds):
+    """builddep of the source RPM, then rpmbuild; after every code 11 the builddep of the exact
+    file ``/out/build/SRPMS/*.buildreqs.nosrc.rpm`` (rpmbuild writes it, the stand-in does not, so
+    the glob stays in the call) and rpmbuild again. No other builddep call."""
+    srpm = "OUT/srpm/slideshow-lock-1.2.3-1.src.rpm"
+    build = f"rpmbuild --rebuild --define _topdir OUT/build {srpm}"
+    again = "dnf builddep OUT/build/SRPMS/*.buildreqs.nosrc.rpm"
+    return [f"dnf builddep {srpm}", build] + [again, build] * (rounds - 1)
+
+
 def test_build_installs_the_second_round_of_build_requirements_on_code_11(box, build):
     result = build(STUB_RPMBUILD_RCS="11 0")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -196,9 +214,8 @@ def test_build_goes_on_while_rpmbuild_asks_for_build_requirements(box, build, co
     assert result.returncode == 0, result.stdout + result.stderr
     calls = box.calls()
     assert len([c for c in calls if c.startswith("rpmbuild")]) == rounds
-    # builddep of the build requirements once after every code 11
-    nosrc = [c for c in calls if c.startswith("dnf builddep") and "buildreqs.nosrc.rpm" in c]
-    assert len(nosrc) == rounds - 1
+    # builddep of the build requirements once after every code 11, on the exact file rpmbuild wrote
+    assert _build_steps(box, calls) == _expected_steps(box, rounds)
     assert [p.name for p in (box.out / "rpm").iterdir()] == [f"{NEVRA}.rpm"]
 
 
@@ -211,8 +228,7 @@ def test_build_fails_loudly_when_rpmbuild_still_asks_after_the_last_round(box, b
     assert result.returncode == 11
     assert "still asks for build requirements after 5 rounds" in result.stderr
     calls = box.calls()
-    assert len([c for c in calls if c.startswith("rpmbuild")]) == 5
-    assert len([c for c in calls if c.startswith("dnf builddep") and "buildreqs" in c]) == 4
+    assert _build_steps(box, calls) == _expected_steps(box, 5)
     assert not list((box.out / "rpm").iterdir())
 
 
@@ -422,6 +438,42 @@ def test_the_control_wants_every_line_of_stage_2_as_a_line_of_its_own(control, w
     lines[which] = prefix + lines[which]
     result = control({"check.sh": 1}, stage2(*lines))
     assert result.returncode == 1, result.stdout
+
+
+@pytest.mark.parametrize(
+    "order",
+    [order for order in itertools.permutations(range(4)) if order != (0, 1, 2, 3)],
+    ids=lambda order: "".join("abcR"[i] for i in order),
+)
+def test_the_control_wants_the_lines_in_the_order_a_b_c_summary(control, order):
+    """The four lines are all there and each one is a line of its own, but not in the order the
+    gate prints them: that is not the output of the gate on 1.0.11 (a=A_PASS, b=B_PASS, c=C_FAIL,
+    R=the summary)."""
+    lines = [A_PASS, B_PASS, C_FAIL, RESULT_FAIL]
+    result = control({"check.sh": 1}, stage2(*(lines[i] for i in order)))
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(), ("registry.example/image:1",), ("", "a-tree"), ("registry.example/image:1", "")],
+    ids=["none", "image-only", "empty-image", "empty-tree"],
+)
+def test_the_control_wants_an_image_and_a_tree(box, args):
+    """A missing or empty argument is a usage error before anything runs: not a gate run on nothing,
+    and not a pass."""
+    engine = fake_engine(box.root / "engine", {}, {})
+    result = box.run(
+        GATE / "negative_control.sh",
+        *args,
+        START_GATE_ENGINE=str(engine),
+        PATH=f"{box.bin}:/usr/bin",
+    )
+    assert result.returncode != 0
+    assert "usage: negative_control.sh IMAGE TREE" in result.stderr
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+    assert box.calls() == []
 
 
 @pytest.mark.parametrize("which", range(4), ids=["a", "b", "c", "summary"])
