@@ -11,6 +11,7 @@ of the RPM does not pass. A change that makes the gate soft fails one of these t
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import sys
 
 import pytest
@@ -181,6 +182,23 @@ def test_build_makes_the_rpm_and_copies_it_out(box, build):
     assert any(call.startswith("dnf builddep") and call.endswith(".src.rpm") for call in calls)
 
 
+def _build_steps(box, calls):
+    """The builddep and rpmbuild calls of build.sh, in order, the output directory shown as OUT."""
+    return [
+        c.replace(str(box.out), "OUT") for c in calls if c.startswith(("dnf builddep", "rpmbuild"))
+    ]
+
+
+def _expected_steps(box, rounds):
+    """builddep of the source RPM, then rpmbuild; after every code 11 the builddep of the exact
+    file ``/out/build/SRPMS/*.buildreqs.nosrc.rpm`` (rpmbuild writes it, the stand-in does not, so
+    the glob stays in the call) and rpmbuild again. No other builddep call."""
+    srpm = "OUT/srpm/slideshow-lock-1.2.3-1.src.rpm"
+    build = f"rpmbuild --rebuild --define _topdir OUT/build {srpm}"
+    again = "dnf builddep OUT/build/SRPMS/*.buildreqs.nosrc.rpm"
+    return [f"dnf builddep {srpm}", build] + [again, build] * (rounds - 1)
+
+
 def test_build_installs_the_second_round_of_build_requirements_on_code_11(box, build):
     result = build(STUB_RPMBUILD_RCS="11 0")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -196,9 +214,8 @@ def test_build_goes_on_while_rpmbuild_asks_for_build_requirements(box, build, co
     assert result.returncode == 0, result.stdout + result.stderr
     calls = box.calls()
     assert len([c for c in calls if c.startswith("rpmbuild")]) == rounds
-    # builddep of the build requirements once after every code 11
-    nosrc = [c for c in calls if c.startswith("dnf builddep") and "buildreqs.nosrc.rpm" in c]
-    assert len(nosrc) == rounds - 1
+    # builddep of the build requirements once after every code 11, on the exact file rpmbuild wrote
+    assert _build_steps(box, calls) == _expected_steps(box, rounds)
     assert [p.name for p in (box.out / "rpm").iterdir()] == [f"{NEVRA}.rpm"]
 
 
@@ -211,8 +228,7 @@ def test_build_fails_loudly_when_rpmbuild_still_asks_after_the_last_round(box, b
     assert result.returncode == 11
     assert "still asks for build requirements after 5 rounds" in result.stderr
     calls = box.calls()
-    assert len([c for c in calls if c.startswith("rpmbuild")]) == 5
-    assert len([c for c in calls if c.startswith("dnf builddep") and "buildreqs" in c]) == 4
+    assert _build_steps(box, calls) == _expected_steps(box, 5)
     assert not list((box.out / "rpm").iterdir())
 
 
@@ -308,7 +324,11 @@ def test_start_gate_wants_a_tree_with_the_copr_makefile(box):
 # signal watch fails with the error that 1.0.11 shipped with
 A_PASS = "START-GATE a PASS version 1.2.3"
 B_PASS = "START-GATE b PASS ok"
-C_FAIL = "START-GATE c FAIL AttributeError: 'GLibUnix' object has no attribute 'signal_add'"
+# the line of the real run on the tree of 1.0.11 (EL10 and Fedora 43), as pygobject words it
+C_FAIL = (
+    "START-GATE c FAIL AttributeError: "
+    "'gi.repository.GLibUnix' object has no attribute 'signal_add'"
+)
 RESULT_FAIL = "START-GATE RESULT FAIL x sha256 y"
 
 
@@ -376,6 +396,9 @@ def test_the_control_proves_nothing_when_the_gate_fails_for_another_reason(contr
         "START-GATE c FAIL AttributeError: module 'slideshow_lock.loop' has no attribute 'x'",
         "START-GATE c FAIL AssertionError: no signal arrived",  # the probe's own failure
         "START-GATE c FAIL OSError: signal_add",  # signal_add, but not the AttributeError
+        # an AttributeError that only has the word in it: the probe or the loop module lost a name
+        "START-GATE c FAIL AttributeError: module 'slideshow_lock.loop' has no attribute "
+        "'unix_signal_add'",
         "START-GATE c FAIL",  # no reason at all
     ],
 )
@@ -415,6 +438,84 @@ def test_the_control_wants_every_line_of_stage_2_as_a_line_of_its_own(control, w
     lines[which] = prefix + lines[which]
     result = control({"check.sh": 1}, stage2(*lines))
     assert result.returncode == 1, result.stdout
+
+
+@pytest.mark.parametrize(
+    "order",
+    [order for order in itertools.permutations(range(4)) if order != (0, 1, 2, 3)],
+    ids=lambda order: "".join("abcR"[i] for i in order),
+)
+def test_the_control_wants_the_lines_in_the_order_a_b_c_summary(control, order):
+    """The four lines are all there and each one is a line of its own, but not in the order the
+    gate prints them: that is not the output of the gate on 1.0.11 (a=A_PASS, b=B_PASS, c=C_FAIL,
+    R=the summary)."""
+    lines = [A_PASS, B_PASS, C_FAIL, RESULT_FAIL]
+    result = control({"check.sh": 1}, stage2(*(lines[i] for i in order)))
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [(), ("registry.example/image:1",), ("", "a-tree"), ("registry.example/image:1", "")],
+    ids=["none", "image-only", "empty-image", "empty-tree"],
+)
+def test_the_control_wants_an_image_and_a_tree(box, args):
+    """A missing or empty argument is a usage error before anything runs: not a gate run on nothing,
+    and not a pass."""
+    engine = fake_engine(box.root / "engine", {}, {})
+    result = box.run(
+        GATE / "negative_control.sh",
+        *args,
+        START_GATE_ENGINE=str(engine),
+        PATH=f"{box.bin}:/usr/bin",
+    )
+    assert result.returncode != 0
+    assert "usage: negative_control.sh IMAGE TREE" in result.stderr
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+    assert box.calls() == []
+
+
+@pytest.mark.parametrize("which", range(4), ids=["a", "b", "c", "summary"])
+def test_the_control_does_not_count_the_lines_of_the_build_log(control, which):
+    """Only the output of stage 2 counts. The build log (stage 1) has all four lines, and stage 2
+    lacks one of them: the line is not taken from stage 1."""
+    lines = [A_PASS, B_PASS, C_FAIL, RESULT_FAIL]
+    stage2_lines = lines[:which] + lines[which + 1 :]
+    result = control({"check.sh": 1}, {"build.sh": "\n".join(lines), **stage2(*stage2_lines)})
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL FAIL" in result.stdout
+
+
+def test_the_control_is_red_when_all_four_lines_are_in_stage_1_and_stage_2_only_fails(control):
+    result = control(
+        {"check.sh": 1},
+        {"build.sh": "\n".join([A_PASS, B_PASS, C_FAIL, RESULT_FAIL]), **stage2(RESULT_FAIL)},
+    )
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+def test_the_control_is_red_when_stage_1_fails_and_its_log_has_the_four_lines(control):
+    """Stage 1 ends with 1: stage 2 is not started (the gate stops), and the log of the build has
+    the lines of a failed gate. There is no stage 2 to read them from."""
+    log = "\n".join([A_PASS, B_PASS, C_FAIL, RESULT_FAIL])
+    result = control({"build.sh": 1}, {"build.sh": log})
+    assert result.returncode == 1, result.stdout
+    assert "NEGATIVE-CONTROL PASS" not in result.stdout
+
+
+def test_the_control_passes_with_the_lines_of_stage_2_even_if_stage_1_printed_one_of_them(control):
+    """A line of the build log that repeats a line of stage 2 does no harm to a real proof."""
+    result = control({"check.sh": 1}, {"build.sh": A_PASS, **FAIL_C})
+    assert result.returncode == 0, result.stdout
+
+
+def test_the_control_runs_the_gate_on_the_tree_it_is_given(box, control):
+    """The tree is the tree of 1.0.11: it is mounted as /src of stage 1, read only. A control that
+    left the tree out would run the gate on its own checkout, and the gate would pass."""
+    control({"check.sh": 1}, FAIL_C)
+    assert f"-v {box.root / 'tree'}:/src:ro" in box.calls()[0]
 
 
 # ---- the probes: a failed step is the exit status 1 ------------------------------------------

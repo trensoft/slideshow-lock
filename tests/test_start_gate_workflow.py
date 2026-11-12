@@ -125,9 +125,34 @@ def test_the_token_is_not_kept_in_the_checkout(path, count):
         assert "persist-credentials: false" in options
 
 
+def _run_lines(path: Path) -> list:
+    """The whole text after ``run:`` of every step of a workflow: a line that only starts with the
+    right command (``... || true``, ``...; exit 0``) is another line."""
+    return re.findall(r"^\s+(?:- )?run: (.*)$", _text(path), re.M)
+
+
+def _engines(path: Path) -> list:
+    return re.findall(r"^\s+START_GATE_ENGINE: (.*)$", _text(path), re.M)
+
+
 def test_the_gate_job_runs_the_gate_script_on_the_image_of_its_leg():
-    job = _jobs()["start-gate"]
-    assert 'run: bash tools/start_gate/start_gate.sh "${{ matrix.image }}"' in job
+    assert _run_lines(WORKFLOW) == ['bash tools/start_gate/start_gate.sh "${{ matrix.image }}"']
+    assert "    name: start gate (${{ matrix.chroot }})\n" in _jobs()["start-gate"]
+
+
+@pytest.mark.parametrize("path", [WORKFLOW, NEGATIVE], ids=lambda p: p.name)
+def test_the_engine_of_the_gate_is_docker_and_nothing_else(path):
+    """``START_GATE_ENGINE`` names the program that runs the containers: ``true`` would run
+    nothing and end with 0, and the gate would be green without having started anything."""
+    assert _engines(path) == ["docker"]
+    assert len(_run_lines(path)) == 1
+
+
+@pytest.mark.parametrize("path", [WORKFLOW, NEGATIVE], ids=lambda p: p.name)
+def test_no_step_of_a_workflow_of_the_gate_may_be_skipped(path):
+    """A step with an ``if:`` (``if: false``) is skipped and the job is green: the gate file has
+    none anywhere, and the control has none either."""
+    assert not re.search(r"^\s+if:", _text(path), re.M)
 
 
 def test_the_negative_control_is_run_by_hand_and_only_by_hand():
@@ -159,13 +184,13 @@ def test_the_negative_control_runs_on_the_commit_of_1_0_11_not_on_a_tag():
 
 def test_the_negative_control_runs_the_control_script_on_the_epel_10_image():
     job = _jobs(NEGATIVE)["negative-control"]
-    assert (
-        "run: bash tools/start_gate/negative_control.sh quay.io/centos/centos:stream10 v1.0.11"
-        in job
-    )
+    assert _run_lines(NEGATIVE) == [
+        "bash tools/start_gate/negative_control.sh quay.io/centos/centos:stream10 v1.0.11"
+    ]
     images = dict(re.findall(r"- chroot: (\S+)\n\s+image: (\S+)", _text()))
     assert images["epel-10"] == "quay.io/centos/centos:stream10"
     assert "negative_control.sh " + images["epel-10"] + " " in job
+    assert "    name: negative control (the gate must fail on 1.0.11)\n" in job
 
 
 def test_the_releasing_file_names_the_commit_of_the_control():

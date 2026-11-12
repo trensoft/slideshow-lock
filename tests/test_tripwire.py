@@ -289,6 +289,7 @@ OPT_OUT_FILES = {
     "test_control_dbus.py",
     "test_dbus_adapters.py",
     "test_service_dbus.py",
+    "test_start_gate_probes.py",
     "test_start_gate_run.py",
     "test_start_gate_verify.py",
 }

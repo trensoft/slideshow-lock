@@ -102,6 +102,10 @@ def test_build_does_not_swallow_a_failure_of_rpmbuild():
     assert '[ "$rc" -eq 11 ] || break' in text
     assert 'if [ "$round" -ge "$max_rounds" ]; then' in text
     assert "max_rounds=5" in text
+    # the build requirements of a round are installed from the file rpmbuild wrote, nothing else:
+    # one builddep of the source RPM before the loop, one of this exact glob in it
+    assert "    gate_dnf builddep /out/build/SRPMS/*.buildreqs.nosrc.rpm" in text.splitlines()
+    assert text.count("gate_dnf builddep") == 2
     assert '[ "$rc" -ne 0 ]' in text and 'exit "$rc"' in text
 
 
