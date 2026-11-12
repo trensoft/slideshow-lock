@@ -22,6 +22,17 @@ the slideshow starts, so a change is heard at the next one.
   `volume`); `autoaudiosink` is in `gstreamer1-plugins-good`. Both are in Fedora and in the EL10 AppStream, EPEL is not
   needed (measured in the repository metadata of Fedora 43 and CentOS Stream 10, 2026-11-11). The spec has
   `Recommends` for both: the sound is off by default and a missing element is a log line, not a failed start.
+* **The tones are not live** (`audiotestsrc is-live=false`, `binaural.LIVE_TONES`): they are made as fast as the sink
+  takes them, and the sink paces the pipeline with its own clock. 1.0.11 and 1.0.12 had live tones, and the sound
+  stuttered now and then (Attila, RHEL 10). Measured 2026-11-12 in a CentOS Stream 10 root (GStreamer 1.26.7, PipeWire
+  1.4.11, `pipewire-pulse` with a null sink, `autoaudiosink` -> `pulsesink`), 120 s each, before -> after:
+  "correct clock skew" 34 -> 0, `audiomixer` late 50 -> 0, dropped 44 -> 0. Two causes. With live tones the sink cannot
+  give the pipeline its clock in time (its ring buffer is not up yet when the clock is chosen), so it follows the system
+  clock and jumps 20 ms in its buffer every 9 s or so, a click in both ears at once. And `audiomixer` (an aggregator,
+  `latency` 0) does not wait for a live tone that is late: a tone whose thread is held up for a moment (a busy machine,
+  a picture change) loses that piece, a hole of silence in one ear (`tests/test_binaural.py` holds one tone up for 0.3 s
+  and counts the silence). Not live, the mixer waits and the sink's buffer (200 ms) covers the wait. The cost: a volume
+  change is heard up to that buffer later, which the 1.5 s fades do not notice.
 * **A thread of its own.** GStreamer is touched only on the worker thread of `BinauralPlayer`. `start`, `stop` and
   `close` only queue a command and return at once, so a sound device that hangs cannot stop the main loop, and the
   lock is made on the main loop.

@@ -706,6 +706,74 @@ def test_the_player_on_the_real_backend_with_a_missing_sink_logs_and_goes_on(cap
     assert "nosuchsinkxyz" in lines[0].getMessage()
 
 
+def _elements(Gst, pipeline, factory):
+    found, walk = [], pipeline.iterate_recurse()
+    while True:
+        result, element = walk.next()
+        if result != Gst.IteratorResult.OK:
+            return found
+        if element.get_factory().get_name() == factory:
+            found.append(element)
+
+
+def test_a_tone_held_up_for_a_moment_leaves_no_hole_in_its_channel():
+    """The stutter of 1.0.12: with live tones ``audiomixer`` does not wait for a tone that is late,
+    so a tone whose thread is held up (a busy machine: a picture change, Ken Burns) loses that
+    piece and the ear hears silence. The real pipeline, as the player opens it (no ``live``
+    argument); the right tone's thread sleeps 0.3 s once, at 0.5 s of sound."""
+    Gst = _gst()
+    backend = GstToneBackend(sink=PROBE_SINK)
+    backend.open(200.0, 210.0)
+    try:
+        pipeline = backend._pipeline
+        tones = _elements(Gst, pipeline, "audiotestsrc")
+        right = [tone for tone in tones if tone.get_property("freq") > 205]
+        assert len(right) == 1
+        held = []
+
+        def hold_up(_pad, info):
+            if not held and info.get_buffer().pts >= Gst.SECOND // 2:
+                held.append(True)
+                time.sleep(0.3)
+            return Gst.PadProbeReturn.OK
+
+        right[0].get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, hold_up)
+        backend.set_volume(1.0)
+        probe = pipeline.get_by_name("probe")
+        for _ in range(12):  # what was made before the volume was set
+            probe.try_pull_sample(Gst.SECOND)
+        data = b""
+        while len(data) < 44100 * 4 * 2:
+            sample = probe.try_pull_sample(Gst.SECOND)
+            assert sample is not None, "the pipeline made no more sound"
+            buffer = sample.get_buffer()
+            ok, info = buffer.map(Gst.MapFlags.READ)
+            assert ok
+            data += bytes(info.data)
+            buffer.unmap(info)
+    finally:
+        backend.close()
+    assert held, "the right tone was never held up"
+    frames = len(data) // 4
+    right_samples = struct.unpack("<" + "h" * (frames * 2), data[: frames * 4])[1::2]
+    longest = run = 0
+    for value in right_samples:
+        run = run + 1 if value == 0 else 0
+        longest = max(longest, run)
+    # a 210 Hz sine at full volume is never 0 two samples in a row; 0.3 s lost would be ~13000
+    assert longest < 3, f"{longest} samples of silence in the right channel"
+
+
+def test_the_tones_are_not_live_so_that_the_sink_paces_the_pipeline():
+    """Live tones made the sink follow the system clock and jump in its buffer every few seconds
+    ("correct clock skew", measured with pipewire-pulse); tones that are not live let it keep to
+    its own clock. The player's backend and the description default to not live."""
+    assert binaural.LIVE_TONES is False
+    text = pipeline_description(200.0, 210.0)
+    assert text.count("is-live=false") == 2 and "is-live=true" not in text
+    assert GstToneBackend()._live is False
+
+
 def test_the_description_has_one_tone_per_side_and_one_volume():
     text = pipeline_description(200.0, 210.0, sink="fakesink", live=True)
     assert text.count("audiotestsrc") == 2
