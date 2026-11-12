@@ -1,0 +1,38 @@
+name: Negative control of the start gate
+
+# Run by hand ("Run workflow"): the gate scripts of this ref against the tree of 1.0.11, the release
+# that went out with the start-up error, on the image of epel-10. Green only when the gate FAILS there
+# in step (c) with the error of 1.0.11 (tools/start_gate/negative_control.sh). It is a file of its own
+# so that the run by hand leaves no check named "start gate (<chroot>)" on the commit: that name is
+# what tools/start_gate/verify_checks.sh counts before a tag, a skipped job included.
+on:
+  workflow_dispatch:
+
+# The job only reads the repository: no write scope for the token.
+permissions:
+  contents: read
+
+jobs:
+  negative-control:
+    name: negative control (the gate must fail on 1.0.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout the gate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # the commit of the tag v1.0.11 by its SHA: a tag can be moved, a commit cannot, and a control
+      # that ran on the fixed tree would report a soft gate
+      - name: Checkout the tree of 1.0.11
+        uses: actions/checkout@v4
+        with:
+          ref: adb4c224d32bebbda3a4f76a20d41ce9a7d338b6
+          path: v1.0.11
+          persist-credentials: false
+
+      - name: The gate must fail on 1.0.11 on epel-10
+        env:
+          START_GATE_ENGINE: docker
+        run: bash tools/start_gate/negative_control.sh quay.io/centos/centos:stream10 v1.0.11

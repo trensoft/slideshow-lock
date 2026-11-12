@@ -1,0 +1,52 @@
+name: Start gate
+
+# The program is built into an RPM, the RPM is installed in a clean container, and the installed
+# `slideshow-lock service` is started (tools/start_gate/, docs/RELEASING.md, "The start gate"). One
+# leg for every chroot of the COPR project, the same list: the check "start gate (<chroot>)" is
+# what a tag waits for. The push to main is the run on the commit that is tagged. This file has no
+# run by hand and no job with an "if": the negative control (the tree of 1.0.11 must make the gate
+# fail) is in negative-control.yml, so that it never leaves a check named "start gate (...)" on a
+# commit, a skipped one included (tools/start_gate/verify_checks.sh would count it as a leg).
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+# The jobs only read the repository: no write scope for the token.
+permissions:
+  contents: read
+
+jobs:
+  start-gate:
+    name: start gate (${{ matrix.chroot }})
+    runs-on: ubuntu-latest
+    # Measured in rootless roots: about 20 s without the downloads. 40 min leaves room for dnf
+    # to fetch gnome-shell and its dependencies, and still cuts off a hang far below 360 min.
+    timeout-minutes: 40
+    strategy:
+      # every leg runs to its end, so one red leg does not hide another
+      fail-fast: false
+      matrix:
+        include:
+          - chroot: epel-10
+            image: quay.io/centos/centos:stream10
+          - chroot: fedora-43
+            image: registry.fedoraproject.org/fedora:43
+          - chroot: fedora-44
+            image: registry.fedoraproject.org/fedora:44
+          - chroot: fedora-45
+            image: registry.fedoraproject.org/fedora:45
+          - chroot: fedora-rawhide
+            image: registry.fedoraproject.org/fedora:rawhide
+    steps:
+      # the token is not kept in .git/config: the code under test runs in the containers and can read /src
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build the RPM, install it in a clean container, start it
+        env:
+          START_GATE_ENGINE: docker
+        run: bash tools/start_gate/start_gate.sh "${{ matrix.image }}"

@@ -46,7 +46,7 @@ reinstall by hand.
 The maintainer's standing rule, given on 2026-10-09 (the maintainer, Telegram; read by the team lead
 and passed on to the releaser; the wording is not in this repository, so it is not checked from
 here): a release of this project no longer waits for a separate "go" of the maintainer. It is
-tagged and pushed at once when both of these hold:
+tagged and pushed at once when all three of these hold:
 
 1. The team gate is green for the same final tree: the two reviewers of the team gate and, if
    the change touches security, the security reviewer as well. A gate for another tree does not
@@ -60,8 +60,13 @@ tagged and pushed at once when both of these hold:
    entry and in the metainfo is the day of the tag. A later `-2` entry of the same version (a new
    spec release with no change upstream) is dated on its own day; the metainfo keeps the day of the
    `-1` entry, and `tests/test_version.py` compares the two.
+3. The start gate (the section "The start gate" below) is green on the commit that is tagged, on
+   every leg of its matrix, `epel-10` first. A leg that did not run is not green: if one chroot did
+   not run, there is no tag. The proof is the output of `tools/start_gate/verify_checks.sh <sha>`
+   (`VERIFY-CHECKS PASS`), run for that commit before the tag. It is the
+   required step before the tag, and with no output of it there is no tag.
 
-When both hold, the releaser pushes the tag, waits for the COPR build and checks every chroot (see
+When all three hold, the releaser pushes the tag, waits for the COPR build and checks every chroot (see
 below), and then sends a done-message to the team lead. No build is made in the COPR project before
 the tag, so the first build of the release is the build of the tag, on the commit that passed the
 gate.
@@ -83,6 +88,115 @@ step").
 Check the version before the tag. (The version shown in the settings window is read from
 `pyproject.toml` or the installed package at run time, so a release changes it nowhere else.) The open points about the release version and the tarball
 are in `docs/copr.md`, section 4.
+
+## The start gate
+
+1.0.11 went out with a start-up error on EL10 and Fedora 43 (`GLibUnix` has no `signal_add`
+there; the program ended before its main loop). The checks of the typelibs and of the imports
+had passed: they do not run the start. The start gate runs it, on every chroot that the project
+builds for, before the tag.
+
+What it does, per leg (`tools/start_gate/start_gate.sh IMAGE [TREE]`, two containers of the image):
+
+1. Stage 1 (`build.sh`): `.copr/Makefile` makes the source RPM from the commit (the file COPR runs),
+   `dnf builddep` installs the build requirements, `rpmbuild --rebuild` makes the RPM. When
+   `rpmbuild` ends with 11 (`%generate_buildrequires` names more build requirements, on EL10 in two
+   rounds), they are installed and it runs again, at most 5 rounds, then the stage fails.
+2. Stage 2 (`check.sh`), in a fresh container that has neither the tree nor the build tools: `dnf`
+   installs the RPM with its dependencies and without the weak ones, then, from the installed copy
+   (`python3 -I`, outside the tree):
+   - (a) `rpm -q` and the installed version are those of the RPM, and the module is the one in the
+     system site-packages;
+   - (b) `slideshow_lock.service` and `slideshow_lock.preview_app` import;
+   - (c) a real SIGTERM and a real SIGINT reach `loop.unix_signal_add` in a real GLib main loop (the
+     call 1.0.11 broke);
+   - (d) the real `slideshow-lock service` comes up to its main loop, with a private D-Bus session
+     bus and a private system bus that has `tools/start_gate/fake_login1.py` as logind, and ends with
+     exit status 0 on SIGTERM. A traceback in its log fails the step.
+
+The workflow is `.github/workflows/start-gate.yml`: on every pull request, on a push to `main` and
+on a push of a `v*` tag, one job per leg, named `start gate (<chroot>)`. The push to `main` is the
+run on the commit that is tagged. In short, the push of a `v*` tag is not a gate: it runs after the tag
+exists, so it can only report (and it checks that the tag is `v<version of the RPM>`); the COPR
+build of the tag does not wait for it. What a tag waits for is `verify_checks.sh`, below. The
+workflow has no run by hand and no job with an `if`: a skipped job would leave a check on the commit
+that is not a leg. The negative control is a workflow of its own, see below.
+The images are the ones of the COPR chroots:
+
+| Leg (COPR chroot) | Image |
+|---|---|
+| `epel-10` | `quay.io/centos/centos:stream10`, with EPEL 10 and CRB turned on (`pyproject-rpm-macros` and `python3-wheel` are in CRB) |
+| `fedora-43` | `registry.fedoraproject.org/fedora:43` |
+| `fedora-44` | `registry.fedoraproject.org/fedora:44` |
+| `fedora-45` | `registry.fedoraproject.org/fedora:45` |
+| `fedora-rawhide` | `registry.fedoraproject.org/fedora:rawhide` |
+
+Start gate chroots (the same as the chroots of the COPR project `trensoft/slideshow-lock`): `epel-10`, `fedora-43`, `fedora-44`, `fedora-45`, `fedora-rawhide`.
+
+The matrix and the chroot list of the COPR project are the same list. When a chroot is added to the
+COPR project or taken out of it, the matrix is changed in the same change, and the line above with
+it (`tests/test_start_gate_workflow.py` compares the line with the matrix). A chroot with no leg is a chroot
+whose start nobody has run.
+
+The required step before the tag is `tools/start_gate/verify_checks.sh <sha>`, with the 40 hex
+digits of the commit to be tagged, that is `"$(git rev-parse HEAD)"` of the commit that is tagged
+and not the head of a pull request (the runs of a pull request are on its head and test the merge
+ref); the tag is made on the same SHA (`GITHUB_TOKEN` in the environment is used if there is one). It
+reads two APIs: the chroot list of the COPR project is read from the COPR API (not from this file or
+from the workflow, so a chroot added to the project or renamed there is seen), and the check runs of
+the commit from the GitHub API. For every COPR chroot there must be exactly one check
+`start gate (<chroot>)` of GitHub Actions that is completed with the conclusion `success`; a leg for
+a chroot that the COPR project has not fails it too. A check that is red, missing, still running,
+cancelled, skipped or from another app is "did not run". The script cuts the architecture off the chroot names from a list (`x86_64`, `aarch64`, `ppc64le`,
+`s390x`, `i386`, `armhfp`): a chroot of an architecture that is not in the list, `riscv64` for
+example, is a leg that the script does not know and it fails; the architecture is added to the list
+when the COPR project gets one. If an API cannot be read the script fails:
+no answer, no tag. The done-message names the commit and the output. A red leg is not run again
+until it turns green: the cause is found, and the change goes through the team gate again (see
+above).
+
+The script is the rule of the procedure, not a lock: that the tag cannot be pushed with a red or a
+missing check at all is a setting of the repository (a required status check on the five names, a
+tag rule), which is a decision of the maintainer's side and is not made by this file.
+
+The negative control is `tools/start_gate/negative_control.sh IMAGE TREE`: the gate on the tree of
+1.0.11, which must fail as 1.0.11 does. It is green only when the output of stage 2 has, each as a
+line of its own, `START-GATE a PASS`, `START-GATE b PASS`, `START-GATE c FAIL AttributeError: ...
+signal_add` and `START-GATE RESULT FAIL`: the gate failed on that tree, on step (c), for the reason
+of 1.0.11 (`GLibUnix` has no `signal_add`), after the install and the import went through. A gate
+that failed for another reason (a build error, no network, `gi` missing, a step (a) or (b) that
+fails, a (c) that fails with another error) is not the proof, and the control is red. The workflow
+is `.github/workflows/negative-control.yml`, a file of its own and run by hand only ("Run workflow",
+`workflow_dispatch`): it leaves no check named `start gate (<chroot>)` on the commit, so
+`verify_checks.sh` has nothing extra to count. It runs the gate scripts of the ref against the tree
+of the commit `adb4c224d32bebbda3a4f76a20d41ce9a7d338b6`, the commit of the tag `v1.0.11`, by its
+SHA and not by the tag (a tag can be moved to a tree that passes, and the control would call the gate
+soft), on the image of `epel-10`. Start it when the gate is changed and before the first tag that
+depends on a changed gate.
+
+The gate can be run by hand: `START_GATE_ENGINE=podman tools/start_gate/start_gate.sh
+registry.fedoraproject.org/fedora:43 [TREE]`. It needs podman or docker and the network, so the tests
+do not run it. `TREE` may be the checkout of an older tag: the scripts are always the ones of this
+checkout. 1.0.11 is the negative control, it must fail on `epel-10` and `fedora-43`
+(`negative_control.sh`, above).
+
+Measured, 2026-11-12, not in the containers of the workflow but in rootless root directories made
+from the repositories of each chroot (CentOS Stream 10 with EPEL 10 and CRB, Fedora 43, 44, 45 and
+Rawhide) with the real `rpmbuild` and stand-ins for `dnf` and `rpm -q` (the packages were unpacked
+beforehand; the stand-in for `rpm -q` answers with the name of the RPM file that the stand-in for
+`dnf` "installed"): the gate on the tree of v1.0.12 passes on all five legs, also as a run for the
+tag `v1.0.12`, and on the tree of v1.0.11 it fails on `epel-10` and `fedora-43` in steps (c) and (d),
+with the error that the maintainer saw (`'gi.repository.GLibUnix' object has no attribute
+'signal_add'`). The scripts are also run by `tests/test_start_gate_run.py` with stand-ins for the
+commands, and `verify_checks.sh` by `tests/test_start_gate_verify.py` against a local server; against
+the real GitHub and COPR APIs it was run for a commit that has no `start gate` checks, and failed
+as it must. `[H]` Not measured: a run of the workflow on GitHub (and so the `negative-control` job);
+`dnf` itself (the flags, the plugin names `dnf5-plugins` and `dnf-plugins-core`, the `epel-release`
+and CRB lines); the real `rpm -q` in step (a); the scriptlets of the install; the packages
+`gnome-shell` and the weak dependencies (left out in the rootless roots, installed or not in the
+containers); the container engine (`start_gate.sh` is run with a stand-in); a real GNOME session. The
+gate does not test the slideshow itself, the idle trigger or the lock: the mutter and GNOME Shell
+interfaces are not there, and the service logs them as errors and runs on.
 
 ## After the gate
 
