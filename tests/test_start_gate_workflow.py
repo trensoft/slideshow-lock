@@ -5,8 +5,8 @@ The legs of the matrix of the first must be the chroot list that ``docs/RELEASIN
 chroots of the COPR project, and it must run on the events a tag depends on. The lines that make it
 a hard gate are checked too: no ``continue-on-error``, no leg that stops the others, a time limit on
 every job, no token kept in ``.git/config``. The second is the negative control (the tree of 1.0.11
-must make the gate fail): it is a file of its own, run by hand, and it leaves no check named like a
-leg of the gate on a commit.
+must make the gate fail): it is a file of its own, run on a pull request that changes the gate and
+by hand, and it leaves no check named like a leg of the gate on a commit.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ NEGATIVE = REPO / ".github" / "workflows" / "negative-control.yml"
 #: the commit of the tag v1.0.11 (the tag can be moved, the commit cannot)
 V1_0_11 = "adb4c224d32bebbda3a4f76a20d41ce9a7d338b6"
 RELEASING = REPO / "docs" / "RELEASING.md"
+#: a line that sets an ``if`` key, also as the first key of a step (``- if:``) or quoted
+IF_KEY = re.compile(r"^\s*(?:-\s+)?[\"']?if[\"']?\s*:", re.M)
 
 
 def _text(path: Path = WORKFLOW) -> str:
@@ -86,7 +88,7 @@ def test_the_gate_workflow_has_no_run_by_hand_and_no_condition_on_a_job():
     commit, which ``verify_checks.sh`` takes for a leg with no chroot and fails on. So the gate
     has no job-level ``if``, and the run by hand lives in the other file."""
     text = _text()
-    assert not re.search(r"^\s+if:", text, re.M)
+    assert not IF_KEY.search(text)
     assert "workflow_dispatch" not in text
     assert "github.event_name" not in text
 
@@ -152,13 +154,32 @@ def test_the_engine_of_the_gate_is_docker_and_nothing_else(path):
 def test_no_step_of_a_workflow_of_the_gate_may_be_skipped(path):
     """A step with an ``if:`` (``if: false``) is skipped and the job is green: the gate file has
     none anywhere, and the control has none either."""
-    assert not re.search(r"^\s+if:", _text(path), re.M)
+    assert not IF_KEY.search(_text(path))
 
 
-def test_the_negative_control_is_run_by_hand_and_only_by_hand():
+def test_the_negative_control_runs_on_a_pull_request_that_changes_the_gate_and_by_hand():
+    """The control runs when the gate changes: on a pull request that touches the gate scripts or
+    one of the two workflows (``paths``), and by hand (``workflow_dispatch``), nothing else."""
     text = _text(NEGATIVE)
-    assert re.search(r"^on:\n  workflow_dispatch:\n\n", text, re.M)
-    assert not re.search(r"^\s+(?:pull_request|push|schedule|workflow_run):", text, re.M)
+    assert re.search(
+        r"^on:\n"
+        r"  pull_request:\n"
+        r"    paths:\n"
+        r"      - tools/start_gate/\*\*\n"
+        r"      - \.github/workflows/start-gate\.yml\n"
+        r"      - \.github/workflows/negative-control\.yml\n"
+        r"  workflow_dispatch:\n\n",
+        text,
+        re.M,
+    )
+    assert not re.search(r"^\s+(?:push|schedule|workflow_run|pull_request_target):", text, re.M)
+
+
+def test_the_negative_control_has_no_condition_on_a_job():
+    """A skipped job would leave a check on the commit; the paths filter decides whether the
+    workflow starts at all."""
+    assert not IF_KEY.search(_text(NEGATIVE))
+    assert "github.event_name" not in _text(NEGATIVE)
 
 
 def test_no_job_of_the_negative_control_is_named_like_a_leg_of_the_gate():
